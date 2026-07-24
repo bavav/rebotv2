@@ -1,0 +1,7 @@
+chroma_db
+chroma_db/*
+dist
+build
+.env
+venv
+**__pycache__**
