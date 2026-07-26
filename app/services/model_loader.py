@@ -1,5 +1,8 @@
 from sentence_transformers import SentenceTransformer
 import torch
+import logging
+
+logger = logging.getLogger(__name__)
 
 class EmbeddingModel:
     _instance = None
@@ -11,22 +14,19 @@ class EmbeddingModel:
         return cls._instance
     
     def _initialize(self):
-        # Используем легкую русскую модель для эмбеддингов
         self.model = SentenceTransformer('intfloat/multilingual-e5-large')
         self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.model.to(self.device)
-        print(f"✅ Модель загружена на {self.device}")
+        logger.info(f"✅ Эмбеддинг-модель загружена на {self.device}")
     
     def get_embedding(self, text: str) -> list:
         """Получить векторное представление текста"""
         if not text or len(text.strip()) == 0:
             return None
-            
-        # Для модели e5 нужно добавлять префикс
-        # 'query: ' для поиска, 'passage: ' для индексации
+        
         embeddings = self.model.encode(
             f"query: {text}",
-            normalize_embeddings=True  # Нормализация для косинусного сходства
+            normalize_embeddings=True
         )
         return embeddings.tolist()
     
@@ -35,7 +35,6 @@ class EmbeddingModel:
         if not texts:
             return []
         
-        # Добавляем префикс для всех текстов
         prefixed_texts = [f"passage: {t}" for t in texts]
         embeddings = self.model.encode(
             prefixed_texts,

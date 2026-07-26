@@ -16,11 +16,9 @@ class VectorStore:
             settings=Settings(anonymized_telemetry=False)
         )
         
-        # ДВЕ КОЛЛЕКЦИИ: белая и черная
         self.white_collection = self._get_or_create_collection("safe_messages")
         self.black_collection = self._get_or_create_collection("advertisements")
         
-        # Проверяем, пустые ли коллекции
         if self.white_collection.count() == 0:
             self._add_base_white_examples()
         
@@ -38,7 +36,7 @@ class VectorStore:
             )
     
     def _add_base_white_examples(self):
-        """Базовые безопасные сообщения (НЕ реклама)"""
+        """Базовые безопасные сообщения"""
         safe_examples = [
             "Привет, как дела?",
             "Здравствуйте, чем занимаетесь?",
@@ -54,12 +52,7 @@ class VectorStore:
             "Давайте обсудим это позже",
             "Согласен с вами полностью",
             "Интересная мысль, спасибо",
-            "Ничего страшного, бывает",
-            "Ребят, а кто в курсе?",
-            "Может быть, стоит попробовать",
-            "Не знаю, что сказать",
-            "Всем хорошего настроения!",
-            "Какой у вас график работы?"
+            "Ничего страшного, бывает"
         ]
         
         from .model_loader import EmbeddingModel
@@ -68,7 +61,7 @@ class VectorStore:
         
         ids = [str(uuid.uuid4()) for _ in safe_examples]
         metadatas = [
-            {"type": "base_white", "added": datetime.now().isoformat()}
+            {"type": "safe", "added": datetime.now().isoformat()}
             for _ in safe_examples
         ]
         
@@ -83,21 +76,21 @@ class VectorStore:
     def _add_base_black_examples(self):
         """Базовые рекламные сообщения"""
         ad_examples = [
+            "Срочно ищу 3 человека оплата от 5к подробности в л",
+            "СРОЧНО! 6 человек на шабашку, плачу наличкой",
             "Купите наш товар со скидкой 50%",
             "Переходите по ссылке и получайте бонусы",
-            "Лучшие условия на рынке, звоните сейчас",
-            "Скидки до 80% только сегодня",
             "Оставьте заявку и получите консультацию бесплатно",
-            "Узнайте свой заработок за 5 минут",
             "Подпишитесь на канал и получите подарок",
-            "Перейдите по ссылке в описании",
-            "Покупайте в нашем магазине с кешбэком",
-            "Регистрируйтесь по ссылке и получайте приветственный бонус",
             "Зарабатывайте от 1000$ в день, подробности по ссылке",
             "Срочно! Работа для студентов, звоните 8-800",
             "Онлайн-курсы, скидка на обучение 40% по промокоду",
-            "Только сегодня! Успейте купить со скидкой",
-            "Переходите в Telegram канал для бонусов"
+            "Переходи в Telegram канал для бонусов",
+            "Успей купить со скидкой, осталось 2 дня",
+            "Звони прямо сейчас, первая консультация бесплатно",
+            "Регистрируйся и получай 1000 рублей на счет",
+            "Скидки до 80% только сегодня в нашем магазине",
+            "Оставь заявку и получи индивидуальный расчет"
         ]
         
         from .model_loader import EmbeddingModel
@@ -106,7 +99,7 @@ class VectorStore:
         
         ids = [str(uuid.uuid4()) for _ in ad_examples]
         metadatas = [
-            {"type": "base_black", "added": datetime.now().isoformat()}
+            {"type": "spam", "added": datetime.now().isoformat()}
             for _ in ad_examples
         ]
         
@@ -130,7 +123,7 @@ class VectorStore:
         doc_id = str(uuid.uuid4())
         metadata = metadata or {}
         metadata.update({
-            "type": "user_white",
+            "type": "safe",
             "added": datetime.now().isoformat()
         })
         
@@ -154,7 +147,7 @@ class VectorStore:
         doc_id = str(uuid.uuid4())
         metadata = metadata or {}
         metadata.update({
-            "type": "user_black",
+            "type": "spam",
             "added": datetime.now().isoformat()
         })
         
@@ -166,101 +159,169 @@ class VectorStore:
         )
         return doc_id
     
-    def classify_text(self, text: str, top_k: int = 3) -> Dict:
-        """
-        Классифицирует текст: реклама или нет
-        """
+    def get_similar(self, text: str, collection, n_results: int = 5) -> Dict:
+        """Получить похожие документы из коллекции"""
         from .model_loader import EmbeddingModel
         model = EmbeddingModel()
         embedding = model.get_embedding(text)
         
         if embedding is None:
-            return {
-                "is_ad": False,
-                "score": 0.0,
-                "closest_white": None,
-                "closest_black": None,
-                "white_distances": [],
-                "black_distances": []
-            }
+            return {"documents": [[]], "distances": [[]], "metadatas": [[]]}
         
-        # Ищем в БЕЛОЙ коллекции
-        white_results = self.white_collection.query(
+        return collection.query(
             query_embeddings=[embedding],
-            n_results=top_k,
+            n_results=n_results,
             include=["documents", "distances", "metadatas"]
         )
+    
+    def classify_text_advanced(self, text: str, top_k: int = 5) -> Dict:
+        """Классификация текста через RAG"""
+        # 1. Получаем похожие из обеих коллекций
+        white_results = self.get_similar(text, self.white_collection, top_k)
+        black_results = self.get_similar(text, self.black_collection, top_k)
         
-        # Ищем в ЧЕРНОЙ коллекции
-        black_results = self.black_collection.query(
-            query_embeddings=[embedding],
-            n_results=top_k,
-            include=["documents", "distances", "metadatas"]
-        )
+        white_docs = white_results['documents'][0] if white_results['documents'] else []
+        white_dists = white_results['distances'][0] if white_results['distances'] else []
+        white_metas = white_results['metadatas'][0] if white_results['metadatas'] else []
         
-        white_distances = white_results['distances'][0] if white_results['distances'] else []
-        black_distances = black_results['distances'][0] if black_results['distances'] else []
+        black_docs = black_results['documents'][0] if black_results['documents'] else []
+        black_dists = black_results['distances'][0] if black_results['distances'] else []
+        black_metas = black_results['metadatas'][0] if black_results['metadatas'] else []
         
-        if not white_distances and not black_distances:
-            return {
-                "is_ad": False,
-                "score": 0.0,
-                "closest_white": None,
-                "closest_black": None,
-                "white_distances": [],
-                "black_distances": []
-            }
+        # 2. Вычисляем сходство
+        safe_scores = [1 - dist for dist in white_dists] if white_dists else [0.0]
+        spam_scores = [1 - dist for dist in black_dists] if black_dists else [0.0]
         
-        # Используем МИНИМАЛЬНЫЕ расстояния (самые похожие)
-        min_white_dist = min(white_distances) if white_distances else float('inf')
-        min_black_dist = min(black_distances) if black_distances else float('inf')
+        max_safe = max(safe_scores) if safe_scores else 0.0
+        max_spam = max(spam_scores) if spam_scores else 0.0
         
-        # Логика классификации
-        is_ad = False
-        score = 0.0
+        # 3. Проверяем наличие рекламных примеров с высоким сходством
+        SPAM_THRESHOLD = 0.4
+        SAFE_THRESHOLD = 0.6
         
-        # Если есть только один тип примеров
-        if min_white_dist == float('inf') and min_black_dist == float('inf'):
-            is_ad = False
-            score = 0.0
-        elif min_white_dist == float('inf'):
-            is_ad = True
-            score = 1 - min_black_dist
-        elif min_black_dist == float('inf'):
-            is_ad = False
-            score = 1 - min_white_dist
-        else:
-            # ОСНОВНАЯ ЛОГИКА: сравниваем расстояния
-            # Если черный пример ближе - реклама
-            if min_black_dist < min_white_dist:
-                is_ad = True
-                score = 1 - min_black_dist
-            # Если белый пример ближе - НЕ реклама
+        high_spam_exists = any(score > SPAM_THRESHOLD for score in spam_scores)
+        high_safe_exists = any(score > SAFE_THRESHOLD for score in safe_scores)
+        
+        # 4. Логика принятия решений
+        if high_spam_exists:
+            if max_safe > max_spam and max_safe > SAFE_THRESHOLD:
+                return {
+                    "is_ad": False,
+                    "score": max_safe,
+                    "method": "safe_dominates",
+                    "delta": max_safe - max_spam,
+                    "closest_white": white_docs[0] if white_docs else None,
+                    "closest_black": black_docs[0] if black_docs else None
+                }
             else:
-                is_ad = False
-                score = 1 - min_white_dist
-            
-            # ДОПОЛНИТЕЛЬНАЯ ПРОВЕРКА: если черный пример очень похож (distance < 0.5)
-            # даже если белый немного ближе - все равно реклама
-            if min_black_dist < 0.5 and min_black_dist < min_white_dist * 1.2:
-                is_ad = True
-                score = 1 - min_black_dist
-            
-            # Если оба расстояния большие (> 0.7) - считаем безопасным
-            if min_white_dist > 0.7 and min_black_dist > 0.7:
-                is_ad = False
-                score = max(0, 1 - min_white_dist)
+                return {
+                    "is_ad": True,
+                    "score": max_spam,
+                    "method": "spam_detected",
+                    "delta": max_spam - max_safe if max_spam > max_safe else 0,
+                    "closest_white": white_docs[0] if white_docs else None,
+                    "closest_black": black_docs[0] if black_docs else None
+                }
+        else:
+            if high_safe_exists:
+                return {
+                    "is_ad": False,
+                    "score": max_safe,
+                    "method": "safe_detected",
+                    "delta": 0,
+                    "closest_white": white_docs[0] if white_docs else None,
+                    "closest_black": None
+                }
+            else:
+                return {
+                    "is_ad": False,
+                    "score": 0.0,
+                    "method": "no_match",
+                    "delta": 0,
+                    "closest_white": None,
+                    "closest_black": None
+                }
+    
+    def find_by_text(self, collection, text: str, threshold: float = 0.1) -> List[Dict]:
+        """Найти документы по тексту"""
+        from .model_loader import EmbeddingModel
+        model = EmbeddingModel()
+        embedding = model.get_embedding(text)
         
-        return {
-            "is_ad": is_ad,
-            "score": score,
-            "closest_white": white_results['documents'][0][0] if white_results['documents'] else None,
-            "closest_black": black_results['documents'][0][0] if black_results['documents'] else None,
-            "white_distances": white_distances,
-            "black_distances": black_distances,
-            "min_white_dist": min_white_dist,
-            "min_black_dist": min_black_dist
-        }
+        if embedding is None:
+            return []
+        
+        results = collection.query(
+            query_embeddings=[embedding],
+            n_results=10,
+            include=["documents", "distances", "metadatas"]
+        )
+        
+        matches = []
+        if results['documents'] and results['documents'][0]:
+            for doc, dist, meta in zip(
+                results['documents'][0],
+                results['distances'][0],
+                results['metadatas'][0]
+            ):
+                if dist <= threshold:
+                    matches.append({
+                        "id": results['ids'][0][results['documents'][0].index(doc)],
+                        "text": doc,
+                        "distance": dist,
+                        "metadata": meta
+                    })
+        
+        return matches
+    
+    def delete_by_text(self, collection, text: str, threshold: float = 0.1) -> Tuple[int, List[str]]:
+        """Удалить документы по тексту"""
+        matches = self.find_by_text(collection, text, threshold)
+        
+        if not matches:
+            return 0, []
+        
+        ids_to_delete = [m['id'] for m in matches]
+        texts_deleted = [m['text'] for m in matches]
+        
+        collection.delete(ids=ids_to_delete)
+        
+        return len(ids_to_delete), texts_deleted
+    
+    def find_by_text_white(self, text: str, threshold: float = 0.1) -> List[Dict]:
+        """Найти в белой коллекции"""
+        return self.find_by_text(self.white_collection, text, threshold)
+    
+    def find_by_text_black(self, text: str, threshold: float = 0.1) -> List[Dict]:
+        """Найти в черной коллекции"""
+        return self.find_by_text(self.black_collection, text, threshold)
+    
+    def delete_white_by_text(self, text: str, threshold: float = 0.1) -> Tuple[int, List[str]]:
+        """Удалить из белой коллекции по тексту"""
+        return self.delete_by_text(self.white_collection, text, threshold)
+    
+    def delete_black_by_text(self, text: str, threshold: float = 0.1) -> Tuple[int, List[str]]:
+        """Удалить из черной коллекции по тексту"""
+        return self.delete_by_text(self.black_collection, text, threshold)
+    
+    def list_all_examples(self, collection, limit: int = 20) -> List[Dict]:
+        """Получить список всех примеров"""
+        results = collection.get(
+            limit=limit,
+            include=["documents", "metadatas"]
+        )
+        
+        examples = []
+        if results['ids']:
+            for idx, doc_id in enumerate(results['ids']):
+                examples.append({
+                    "id": doc_id,
+                    "text": results['documents'][idx] if idx < len(results['documents']) else "",
+                    "metadata": results['metadatas'][idx] if idx < len(results['metadatas']) else {}
+                })
+        
+        return examples
+    
     def get_stats(self) -> dict:
         """Статистика по обеим коллекциям"""
         return {
@@ -268,33 +329,3 @@ class VectorStore:
             "black_count": self.black_collection.count(),
             "total": self.white_collection.count() + self.black_collection.count()
         }
-    def query(self, text: str):
-        white_results = self.white_collection.query(
-            query_texts=[text],
-            n_results=1
-        )
-        
-        # Ищем в ЧЕРНОЙ коллекции
-        black_results = self.black_collection.query(
-            query_texts=[text],
-            n_results=1
-        )
-        if white_results['ids'] and white_results['ids'][0]:
-            return white_results['ids'][0][0]
-        elif black_results['ids'] and black_results['ids'][0]:
-            return black_results['ids'][0][0]
-    def remove(self, text: str):
-        white_results = self.white_collection.query(
-            query_texts=[text],
-            n_results=1
-        )
-        
-        # Ищем в ЧЕРНОЙ коллекции
-        black_results = self.black_collection.query(
-            query_texts=[text],
-            n_results=1
-        )
-        if white_results['ids'] and white_results['ids'][0]:
-            self.white_collection.delete(white_results['ids'][0][0])
-        elif black_results['ids'] and black_results['ids'][0]:
-             self.black_collection.delete(black_results['ids'][0][0])

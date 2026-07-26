@@ -1,6 +1,7 @@
-from typing import Tuple, Optional, Dict
+from typing import Tuple, Optional, Dict, List
 import logging
 from .vector_store import VectorStore
+from .ml_model import SpamClassifier
 
 logger = logging.getLogger(__name__)
 
@@ -15,68 +16,68 @@ class RAGService:
     
     def _initialize(self):
         self.vector_store = VectorStore()
-        self.min_confidence = 0.3  # Минимальная уверенность для определения
-        logger.info("✅ RAG Service инициализирован с двойной базой")
-    def query(self, text: str):
-        return self.vector_store.query(text)
-    def check_advertisement(self, text: str) -> Tuple[bool, float, Optional[str], Optional[str]]:
-        """
-        Проверяет, является ли текст рекламным
+        self.ml_classifier = SpamClassifier()
+        self.use_ml = True
+        logger.info("✅ RAG Service инициализирован с ML-поддержкой")
+    
+    def check_advertisement(self, text: str) -> Tuple[bool, float, str, Optional[str], Optional[str]]:
+        """Проверка рекламы: RAG + ML"""
+        # ЭТАП 1: RAG-проверка
+        rag_result = self.vector_store.classify_text_advanced(text)
         
-        Returns:
-            (is_ad: bool, confidence: float, closest_white: str, closest_black: str)
-        """
-        # Классифицируем текст
-        result = self.vector_store.classify_text(text)
+        if rag_result['is_ad']:
+            return True, rag_result['score'], f"rag_{rag_result['method']}", rag_result.get('closest_white'), rag_result.get('closest_black')
         
-        is_ad = result['is_ad']
-        confidence = result['score']
+        # ЭТАП 2: ML-проверка
+        if self.use_ml:
+            is_spam, ml_confidence = self.ml_classifier.predict(text)
+            
+            if is_spam:
+                logger.info(f"🤖 ML обнаружил рекламу: {text[:50]}... (Уверенность: {ml_confidence:.2f})")
+                return True, ml_confidence, "ml_classifier", rag_result.get('closest_white'), rag_result.get('closest_black')
         
-        # Если уверенность низкая, считаем безопасным
-        if confidence < self.min_confidence:
-            is_ad = False
-        logger.info(
-                f"🔴 РЕКЛАМА: {text[:50]}... "
-                f"(Уверенность: {confidence:.2f}, "
-                f"Черный: {result['closest_black'][:30] if result['closest_black'] else 'None'})"
-                f"ad: {is_ad}"
-            )
-        # Логируем результат
-        if is_ad:
-            logger.info(
-                f"🔴 РЕКЛАМА: {text[:50]}... "
-                f"(Уверенность: {confidence:.2f}, "
-                f"Черный: {result['closest_black'][:30] if result['closest_black'] else 'None'})"
-            )
-        else:
-            logger.info(
-                f"🟢 БЕЗОПАСНО: {text[:50]}... "
-                f"(Уверенность: {confidence:.2f}, "
-                f"Белый: {result['closest_white'][:30] if result['closest_white'] else 'None'})"
-            )
-        
-        return is_ad, confidence, result['closest_white'], result['closest_black']
+        return False, rag_result['score'], f"rag_{rag_result['method']}", rag_result.get('closest_white'), rag_result.get('closest_black')
     
     def add_white_example(self, text: str) -> str:
         """Добавить безопасный пример"""
         doc_id = self.vector_store.add_white_example(text)
-        logger.info(f"➕ Добавлен безопасный пример: {text[:50]}...")
+        if doc_id:
+            logger.info(f"➕ Добавлен безопасный пример: {text[:50]}...")
         return doc_id
     
     def add_black_example(self, text: str) -> str:
         """Добавить рекламный пример"""
         doc_id = self.vector_store.add_black_example(text)
-        logger.info(f"➕ Добавлен рекламный пример: {text[:50]}...")
+        if doc_id:
+            logger.info(f"➕ Добавлен рекламный пример: {text[:50]}...")
         return doc_id
+    
+    def delete_white_by_text(self, text: str) -> Tuple[int, List[str]]:
+        """Удалить безопасные примеры"""
+        count, texts = self.vector_store.delete_white_by_text(text)
+        return count, texts
+    
+    def delete_black_by_text(self, text: str) -> Tuple[int, List[str]]:
+        """Удалить рекламные примеры"""
+        count, texts = self.vector_store.delete_black_by_text(text)
+        return count, texts
+    
+    def find_white_by_text(self, text: str) -> List[Dict]:
+        """Найти безопасные примеры"""
+        return self.vector_store.find_by_text_white(text)
+    
+    def find_black_by_text(self, text: str) -> List[Dict]:
+        """Найти рекламные примеры"""
+        return self.vector_store.find_by_text_black(text)
+    
+    def list_white_examples(self, limit: int = 20) -> List[Dict]:
+        """Список безопасных примеров"""
+        return self.vector_store.list_all_examples(self.vector_store.white_collection, limit)
+    
+    def list_black_examples(self, limit: int = 20) -> List[Dict]:
+        """Список рекламных примеров"""
+        return self.vector_store.list_all_examples(self.vector_store.black_collection, limit)
     
     def get_statistics(self) -> dict:
         """Получить статистику"""
-        stats = self.vector_store.get_stats()
-        stats['min_confidence'] = self.min_confidence
-        return stats
-    
-    def set_confidence(self, new_confidence: float):
-        """Изменить порог уверенности"""
-        if 0 < new_confidence < 1:
-            self.min_confidence = new_confidence
-            logger.info(f"Порог уверенности изменен на {new_confidence}")
+        return self.vector_store.get_stats()

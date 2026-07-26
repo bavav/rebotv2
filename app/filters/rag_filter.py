@@ -10,10 +10,7 @@ class RagFilter(BaseFilter):
         self.rag_service = RAGService()
     
     async def __call__(self, message: Message) -> bool:
-        # Проверяем наличие текста
-        print("wrk")
         if not message.text:
-            print("kaak?")
             return False
         
         text = message.text.strip()
@@ -22,12 +19,14 @@ class RagFilter(BaseFilter):
         if text.startswith('/'):
             return False
         
-        # Пропускаем слишком короткие сообщения (меньше 3 слов)
+        # Слишком короткие сообщения пропускаем
         if len(text.split()) < 3:
-            logger.debug(f"🟢 Слишком короткое сообщение: {text}")
             return False
         
-        # Основная проверка через RAG
-        is_ad, confidence, closest_white, closest_black = self.rag_service.check_advertisement(text)
+        # Проверка через RAG + ML
+        is_ad, confidence, method, closest_white, closest_black = self.rag_service.check_advertisement(text)
+        
+        if is_ad:
+            logger.info(f"🔴 РЕКЛАМА | Метод: {method} | Уверенность: {confidence:.2f} | Текст: {text[:50]}...")
         
         return is_ad
