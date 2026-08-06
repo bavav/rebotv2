@@ -5,7 +5,8 @@ import uuid
 from datetime import datetime
 import os
 import numpy as np
-
+import logging
+logger = logging.getLogger(__name__)
 class VectorStore:
     def __init__(self):
         self.persist_directory = "./chroma_db"
@@ -71,7 +72,7 @@ class VectorStore:
             metadatas=metadatas,
             ids=ids
         )
-        print(f"✅ Добавлено {len(safe_examples)} безопасных примеров")
+        logger.debug(f"✅ Добавлено {len(safe_examples)} безопасных примеров")
     
     def _add_base_black_examples(self):
         """Базовые рекламные сообщения"""
@@ -109,7 +110,7 @@ class VectorStore:
             metadatas=metadatas,
             ids=ids
         )
-        print(f"✅ Добавлено {len(ad_examples)} рекламных примеров")
+        logger.debug(f"✅ Добавлено {len(ad_examples)} рекламных примеров")
     
     def add_white_example(self, text: str, metadata: dict = None) -> str:
         """Добавить безопасное сообщение"""

@@ -3,34 +3,50 @@ import logging
 from aiogram import Bot, Dispatcher
 from aiogram.enums import ParseMode
 from aiogram.fsm.storage.memory import MemoryStorage
-
+from modules_loader import router as mdls_router
 from app.config import config
 from app.handlers import admin_router, message_router
+from admin_module.handlers.comands import router as admin_module_router
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+from ban_module.handlers.main import router as ban_router
 
+from bd.mdlwr import DbSessionMiddleware ,DbUserUpdaterMiddleware
+from bd.main import router as bd_router 
 # Настройка логирования
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
+bot = Bot(token=config.BOT_TOKEN)#, parse_mode=ParseMode.HTML)
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 async def main():
     # Инициализация бота
-    bot = Bot(token=config.BOT_TOKEN)#, parse_mode=ParseMode.HTML)
-    storage = MemoryStorage()
-    dp = Dispatcher(storage=storage)
+    engine = create_async_engine("sqlite+aiosqlite:///database.db")
+    
+    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False)
+
     
     # Регистрация роутеров
     dp.include_router(admin_router)
-    dp.include_router(message_router)
+    message_router.message.outer_middleware(DbUserUpdaterMiddleware(session_maker))
     
+    dp.include_router(message_router)
+    dp.include_router(mdls_router)
+    dp.include_router(admin_module_router)
+    bd_router.message.middleware(DbUserUpdaterMiddleware(session_maker))
+    bd_router.message.middleware(DbSessionMiddleware(session_maker))
+    dp.include_router(bd_router)
+    ban_router.message.middleware(DbSessionMiddleware(session_maker=session_maker))
+    dp.include_router(ban_router)
     logger.info("🚀 Бот запущен!")
     
     try:
         await dp.start_polling(bot)
     finally:
         await bot.session.close()
-async def add_module(mdl):
-    dp.sub_routers.insert(0,mdl)
+
+    
 if __name__ == "__main__":
     asyncio.run(main())

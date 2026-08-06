@@ -17,7 +17,7 @@ ml_classifier = SpamClassifier()
 @router.message(Command("add_white"))
 async def add_white_example(message: types.Message):
     """Добавить безопасный пример (НЕ реклама)"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -49,7 +49,7 @@ async def add_white_example(message: types.Message):
 @router.message(Command("add_black"))
 async def add_black_example(message: types.Message):
     """Добавить рекламный пример"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -83,7 +83,7 @@ async def add_black_example(message: types.Message):
 @router.message(Command("delete_white"))
 async def delete_white_example(message: types.Message):
     """Удалить безопасный пример по тексту"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -127,7 +127,7 @@ async def delete_white_example(message: types.Message):
 @router.message(Command("delete_black"))
 async def delete_black_example(message: types.Message):
     """Удалить рекламный пример по тексту"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -173,7 +173,7 @@ async def delete_black_example(message: types.Message):
 @router.message(Command("find_white"))
 async def find_white_example(message: types.Message):
     """Найти безопасные примеры по тексту"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -204,7 +204,7 @@ async def find_white_example(message: types.Message):
 @router.message(Command("find_black"))
 async def find_black_example(message: types.Message):
     """Найти рекламные примеры по тексту"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -235,7 +235,7 @@ async def find_black_example(message: types.Message):
 @router.message(Command("list_white"))
 async def list_white_examples(message: types.Message):
     """Показать список безопасных примеров"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -265,7 +265,7 @@ async def list_white_examples(message: types.Message):
 @router.message(Command("list_black"))
 async def list_black_examples(message: types.Message):
     """Показать список рекламных примеров"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -297,7 +297,7 @@ async def list_black_examples(message: types.Message):
 @router.message(Command("set_model"))
 async def set_model(message: types.Message):
     """Изменить ML-модель"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -332,7 +332,7 @@ async def set_model(message: types.Message):
 @router.message(Command("set_ml_threshold"))
 async def set_ml_threshold(message: types.Message):
     """Установить порог ML-модели"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -362,7 +362,7 @@ async def set_ml_threshold(message: types.Message):
 @router.message(Command("set_templates"))
 async def set_templates(message: types.Message):
     """Изменить шаблоны для ML-модели"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -396,7 +396,7 @@ async def set_templates(message: types.Message):
 @router.message(Command("ml_stats"))
 async def ml_stats(message: types.Message):
     """Показать статистику ML-модели"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -421,7 +421,7 @@ async def ml_stats(message: types.Message):
 @router.message(Command("toggle_ml"))
 async def toggle_ml(message: types.Message):
     """Включить/выключить ML-проверку"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -439,7 +439,7 @@ async def toggle_ml(message: types.Message):
 @router.message(Command("check"))
 async def check_text(message: types.Message):
     """Проверить текст с подробным выводом"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -482,7 +482,7 @@ async def check_text(message: types.Message):
 @router.message(Command("stats"))
 async def get_stats(message: types.Message):
     """Показать общую статистику"""
-    if message.from_user.id != config.ADMIN_ID:
+    if message.from_user.id not in  config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     

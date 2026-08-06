@@ -23,36 +23,37 @@ async def forward_filtered_message(message: types.Message):
         pending_messages[message.message_id] = text
         
         # Пересылаем целевому пользователю
-        forwarded = await message.forward(chat_id=config.TARGET_USER_ID)
-        
-        # Создаем кнопки для действий
-        keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ В белый", 
-                    callback_data=f"action_white_{message.message_id}"
-                ),
-                InlineKeyboardButton(
-                    text="❌ В черный", 
-                    callback_data=f"action_black_{message.message_id}"
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="⏭ Пропустить", 
-                    callback_data=f"action_skip_{message.message_id}"
-                )
-            ]
-        ])
-        
-        # Отправляем сообщение с кнопками под пересланным
-        await message.bot.send_message(
-            chat_id=config.TARGET_USER_ID,
-            text=f"📝 Действия с сообщением:",
-            reply_markup=keyboard
-        )
-        
-        logger.info(f"📤 Переслано сообщение с кнопками: {text[:50]}...")
+        for user in config.TARGET_USER_ID:
+            forwarded = await message.forward(chat_id=user)
+            
+            # Создаем кнопки для действий
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="✅ В белый", 
+                        callback_data=f"action_white_{message.message_id}"
+                    ),
+                    InlineKeyboardButton(
+                        text="❌ В черный", 
+                        callback_data=f"action_black_{message.message_id}"
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="⏭ Пропустить", 
+                        callback_data=f"action_skip_{message.message_id}"
+                    )
+                ]
+            ])
+            
+            # Отправляем сообщение с кнопками под пересланным
+            await message.bot.send_message(
+                chat_id=user,
+                text=f"https://t.me/c/{str(message.chat.id)[4:]}/{str(message.message_thread_id) + '/' if message.message_thread_id != None else ''}{message.message_id}\n📝 Действия с сообщением:",
+                reply_markup=keyboard
+            )
+            
+            logger.info(f"📤 Переслано сообщение с кнопками: {text[:50]}...")
         
     except Exception as e:
         logger.error(f"❌ Ошибка пересылки: {e}")
