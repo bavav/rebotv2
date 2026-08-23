@@ -42,6 +42,10 @@ async def forward_filtered_message(message: types.Message):
                     InlineKeyboardButton(
                         text="⏭ Пропустить", 
                         callback_data=f"action_skip_{message.message_id}"
+                    ),
+                    InlineKeyboardButton(
+                        text="🚫 Ограничить пользователя", 
+                        callback_data=f"select_punisment_{message.from_user.id}"
                     )
                 ]
             ])

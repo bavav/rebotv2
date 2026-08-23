@@ -12,17 +12,23 @@ rag_service = RAGService()
 ml_classifier = SpamClassifier()
 
 
+from aiogram.filters.callback_data import CallbackData
+from aiogram.fsm.state import State, StatesGroup
+
+# Фабрика для кнопок главного меню (мут/бан)
+
+
+
 # ==================== УПРАВЛЕНИЕ ПРИМЕРАМИ ====================
 
 @router.message(Command("add_white"))
 async def add_white_example(message: types.Message):
     """Добавить безопасный пример (НЕ реклама)"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
     text = message.text.replace("/add_white", "").strip()
-    
+
     if not text:
         if message.reply_to_message and message.reply_to_message.text:
             text = message.reply_to_message.text
@@ -32,9 +38,9 @@ async def add_white_example(message: types.Message):
                 "Или ответьте на сообщение с этой командой"
             )
             return
-    
+
     doc_id = rag_service.add_white_example(text)
-    
+
     if doc_id:
         stats = rag_service.get_statistics()
         await message.reply(
@@ -49,12 +55,12 @@ async def add_white_example(message: types.Message):
 @router.message(Command("add_black"))
 async def add_black_example(message: types.Message):
     """Добавить рекламный пример"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+
     text = message.text.replace("/add_black", "").strip()
-    
+
     if not text:
         if message.reply_to_message and message.reply_to_message.text:
             text = message.reply_to_message.text
@@ -64,9 +70,9 @@ async def add_black_example(message: types.Message):
                 "Или ответьте на сообщение с этой командой"
             )
             return
-    
+
     doc_id = rag_service.add_black_example(text)
-    
+
     if doc_id:
         stats = rag_service.get_statistics()
         await message.reply(
@@ -83,12 +89,12 @@ async def add_black_example(message: types.Message):
 @router.message(Command("delete_white"))
 async def delete_white_example(message: types.Message):
     """Удалить безопасный пример по тексту"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+
     text = message.text.replace("/delete_white", "").strip()
-    
+
     if not text:
         if message.reply_to_message and message.reply_to_message.text:
             text = message.reply_to_message.text
@@ -98,22 +104,27 @@ async def delete_white_example(message: types.Message):
                 "Или ответьте на сообщение с этой командой"
             )
             return
-    
+
     matches = rag_service.find_white_by_text(text)
-    
+
     if not matches:
-        await message.reply(f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`")
+        await message.reply(
+          f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`")
         return
-    
+
     preview = "\n".join([f"• {m['text'][:60]}..." for m in matches[:5]])
     if len(matches) > 5:
         preview += f"\n... и еще {len(matches) - 5} примеров"
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_white_{text[:50]}")],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")]
+        [InlineKeyboardButton(
+          text="✅ Да, удалить",
+          callback_data=f"confirm_delete_white_{text[:50]}")],
+        [InlineKeyboardButton(
+          text="❌ Отмена",
+          callback_data="cancel_delete")]
     ])
-    
+
     await message.reply(
         f"⚠️ Найдено {len(matches)} примеров для удаления:\n"
         f"━━━━━━━━━━━━━━━━\n"
@@ -127,12 +138,12 @@ async def delete_white_example(message: types.Message):
 @router.message(Command("delete_black"))
 async def delete_black_example(message: types.Message):
     """Удалить рекламный пример по тексту"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+
     text = message.text.replace("/delete_black", "").strip()
-    
+
     if not text:
         if message.reply_to_message and message.reply_to_message.text:
             text = message.reply_to_message.text
@@ -142,22 +153,26 @@ async def delete_black_example(message: types.Message):
                 "Или ответьте на сообщение с этой командой"
             )
             return
-    
+
     matches = rag_service.find_black_by_text(text)
-    
+
     if not matches:
-        await message.reply(f"❌ Не найдено рекламных примеров с текстом:\n`{text[:100]}`")
+        await message.reply(
+          f"❌ Не найдено рекламных примеров с текстом:\n`{text[:100]}`")
         return
-    
+
     preview = "\n".join([f"• {m['text'][:60]}..." for m in matches[:5]])
     if len(matches) > 5:
         preview += f"\n... и еще {len(matches) - 5} примеров"
-    
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Да, удалить", callback_data=f"confirm_delete_black_{text[:50]}")],
+        [InlineKeyboardButton(
+          text="✅ Да, удалить",
+          callback_data=f"confirm_delete_black_{text[:50]}"
+        )],
         [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")]
     ])
-    
+
     await message.reply(
         f"⚠️ Найдено {len(matches)} примеров для удаления:\n"
         f"━━━━━━━━━━━━━━━━\n"
@@ -173,47 +188,50 @@ async def delete_black_example(message: types.Message):
 @router.message(Command("find_white"))
 async def find_white_example(message: types.Message):
     """Найти безопасные примеры по тексту"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+
     text = message.text.replace("/find_white", "").strip()
-    
+
     if not text:
         await message.reply("ℹ️ Используйте: /find_white [текст]")
         return
-    
+
     matches = rag_service.find_white_by_text(text)
-    
+
     if not matches:
-        await message.reply(f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`")
+        await message.reply(
+          f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`"
+        )
         return
-    
+
     result = f"🔍 Найдено {len(matches)} безопасных примеров:\n━━━━━━━━━━━━━━━━\n"
     for i, match in enumerate(matches[:10], 1):
-        result += f"{i}. {match['text'][:100]}\n"
+
+        result += f"{i}.{match['text'][:100]}\n"
         result += f"   📊 Сходство: {1 - match['distance']:.3f}\n"
         result += f"   🆔 ID: {match['id'][:8]}...\n\n"
-    
+
     if len(matches) > 10:
         result += f"... и еще {len(matches) - 10} примеров"
-    
+
     await message.reply(result)
 
 
 @router.message(Command("find_black"))
 async def find_black_example(message: types.Message):
     """Найти рекламные примеры по тексту"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.ADMIN_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+
     text = message.text.replace("/find_black", "").strip()
-    
+
     if not text:
         await message.reply("ℹ️ Используйте: /find_black [текст]")
         return
-    
+
     matches = rag_service.find_black_by_text(text)
     
     if not matches:
@@ -544,3 +562,5 @@ async def cancel_delete(callback: types.CallbackQuery):
     """Отмена удаления"""
     await callback.message.edit_text("❌ Удаление отменено")
     await callback.answer()
+
+

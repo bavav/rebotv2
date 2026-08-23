@@ -268,4 +268,3 @@ async def get_active_punishments(session: AsyncSession, user_id,chat_id,full:boo
     except SQLAlchemyError as e:
         logger.debug(f"Database error: {e}")
         return "Ошибка при получении истории наказаний."
-
