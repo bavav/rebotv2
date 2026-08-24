@@ -1,15 +1,15 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from app.services.rag_service import RAGService
-from app.services.ml_model import SpamClassifier
+from app.services.rag_service import ragservice
+from app.services.onnx_model import SpamShieldClassifier
 from app.config import config
 import logging
 
 logger = logging.getLogger(__name__)
 router = Router()
-rag_service = RAGService()
-ml_classifier = SpamClassifier()
+rag_service = ragservice
+ml_classifier = ragservice.ml_classifier
 
 
 from aiogram.filters.callback_data import CallbackData
@@ -24,7 +24,7 @@ from aiogram.fsm.state import State, StatesGroup
 @router.message(Command("add_white"))
 async def add_white_example(message: types.Message):
     """Добавить безопасный пример (НЕ реклама)"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
     text = message.text.replace("/add_white", "").strip()
@@ -55,7 +55,7 @@ async def add_white_example(message: types.Message):
 @router.message(Command("add_black"))
 async def add_black_example(message: types.Message):
     """Добавить рекламный пример"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -89,7 +89,7 @@ async def add_black_example(message: types.Message):
 @router.message(Command("delete_white"))
 async def delete_white_example(message: types.Message):
     """Удалить безопасный пример по тексту"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -138,7 +138,7 @@ async def delete_white_example(message: types.Message):
 @router.message(Command("delete_black"))
 async def delete_black_example(message: types.Message):
     """Удалить рекламный пример по тексту"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -188,7 +188,7 @@ async def delete_black_example(message: types.Message):
 @router.message(Command("find_white"))
 async def find_white_example(message: types.Message):
     """Найти безопасные примеры по тексту"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -222,7 +222,7 @@ async def find_white_example(message: types.Message):
 @router.message(Command("find_black"))
 async def find_black_example(message: types.Message):
     """Найти рекламные примеры по тексту"""
-    if message.from_user.id not in config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins():
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -253,7 +253,7 @@ async def find_black_example(message: types.Message):
 @router.message(Command("list_white"))
 async def list_white_examples(message: types.Message):
     """Показать список безопасных примеров"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -283,7 +283,7 @@ async def list_white_examples(message: types.Message):
 @router.message(Command("list_black"))
 async def list_black_examples(message: types.Message):
     """Показать список рекламных примеров"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -315,7 +315,7 @@ async def list_black_examples(message: types.Message):
 @router.message(Command("set_model"))
 async def set_model(message: types.Message):
     """Изменить ML-модель"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -332,25 +332,32 @@ async def set_model(message: types.Message):
     model_name = parts[1]
     loading_msg = await message.reply(f"🔄 Загрузка модели: {model_name}...")
     
-    success = ml_classifier.load_model(model_name)
+    success = ml_classifier._load_model(model_name)
     
     if success:
-        await loading_msg.edit_text(
-            f"✅ Модель успешно загружена!\n"
-            f"📊 Текущая модель: {model_name}\n"
-            f"🎯 Порог: {ml_classifier.threshold:.2f}"
-        )
+        if isinstance(ml_classifier,SpamShieldClassifier):
+            await loading_msg.edit_text(
+                f"✅ Модель успешно загружена!\n"
+                f"📊 Текущая модель: {model_name}\n"
+                f"🎯 Порог: {ml_classifier.threshold:.2f}"
+            )
+        else:
+            await loading_msg.edit_text(
+                f"✅ Модель успешно загружена!\n"
+                f"📊 Текущая модель: {model_name}\n"
+                f"🎯 Порог: {ml_classifier.config.threshold:.2f}"
+            )
     else:
         await loading_msg.edit_text(
             f"❌ Не удалось загрузить модель: {model_name}\n"
-            f"Текущая модель: {ml_classifier.model_name}"
+            f"Текущая модель: {ml_classifier.config.model_name if ml_classifier.tupe == "noshield" else "Shield"}"
         )
 
 
 @router.message(Command("set_ml_threshold"))
 async def set_ml_threshold(message: types.Message):
     """Установить порог ML-модели"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -367,7 +374,7 @@ async def set_ml_threshold(message: types.Message):
         ml_classifier.set_threshold(threshold)
         await message.reply(
             f"✅ Порог ML-модели установлен: {threshold:.2f}\n"
-            f"ℹ️ Текущая модель: {ml_classifier.model_name}"
+            f"ℹ️ Текущая модель: {ml_classifier.config.model_name if ml_classifier.tupe == "noshield" else "Shield"}"
         )
         
     except (ValueError, IndexError):
@@ -380,10 +387,12 @@ async def set_ml_threshold(message: types.Message):
 @router.message(Command("set_templates"))
 async def set_templates(message: types.Message):
     """Изменить шаблоны для ML-модели"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
-    
+    if  isinstance(ml_classifier,SpamShieldClassifier):
+        await message.answer("Shield не нужны примеры")
+        return
     text = message.text.replace("/set_templates", "").strip()
     
     if not text or '|' not in text:
@@ -414,32 +423,44 @@ async def set_templates(message: types.Message):
 @router.message(Command("ml_stats"))
 async def ml_stats(message: types.Message):
     """Показать статистику ML-модели"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
     stats = rag_service.get_statistics()
-    
-    await message.reply(
-        f"🤖 ML-модель:\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"📊 Модель: {ml_classifier.model_name}\n"
-        f"🎯 Порог: {ml_classifier.threshold:.2f}\n"
-        f"📱 Устройство: {ml_classifier.device}\n"
-        f"🔴 Шаблон спама: {ml_classifier.spam_template[:50]}...\n"
-        f"🟢 Шаблон безопасно: {ml_classifier.safe_template[:50]}...\n"
-        f"━━━━━━━━━━━━━━━━\n"
-        f"📊 RAG-статистика:\n"
-        f"🟢 Безопасных: {stats['white_count']}\n"
-        f"🔴 Рекламных: {stats['black_count']}\n"
-        f"📚 Всего: {stats['total']}"
-    )
-
+    if not isinstance(ml_classifier,SpamShieldClassifier):
+        await message.reply(
+            f"🤖 ML-модель:\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"📊 Модель: {ml_classifier.config.model_name}\n"
+            f"🎯 Порог: {ml_classifier.config.threshold:.2f}\n"
+            f"📱 Устройство: {ml_classifier._device}\n"
+            f"🔴 Шаблон спама: {ml_classifier.config.spam_template[:50]}...\n"
+            f"🟢 Шаблон безопасно: {ml_classifier.config.safe_template[:50]}...\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"📊 RAG-статистика:\n"
+            f"🟢 Безопасных: {stats['white_count']}\n"
+            f"🔴 Рекламных: {stats['black_count']}\n"
+            f"📚 Всего: {stats['total']}"
+        )
+    else:
+        await message.reply(
+            f"🤖 ML-модель:\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"📊 Модель: Shield\n"
+            f"🎯 Порог: {ml_classifier.threshold:.2f}\n"
+            f"📱 Устройство: cpu\n"
+            f"━━━━━━━━━━━━━━━━\n"
+            f"📊 RAG-статистика:\n"
+            f"🟢 Безопасных: {stats['white_count']}\n"
+            f"🔴 Рекламных: {stats['black_count']}\n"
+            f"📚 Всего: {stats['total']}"
+        )
 
 @router.message(Command("toggle_ml"))
 async def toggle_ml(message: types.Message):
     """Включить/выключить ML-проверку"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -457,7 +478,7 @@ async def toggle_ml(message: types.Message):
 @router.message(Command("check"))
 async def check_text(message: types.Message):
     """Проверить текст с подробным выводом"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -500,7 +521,7 @@ async def check_text(message: types.Message):
 @router.message(Command("stats"))
 async def get_stats(message: types.Message):
     """Показать общую статистику"""
-    if message.from_user.id not in  config.ADMIN_ID:
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     
@@ -513,7 +534,7 @@ async def get_stats(message: types.Message):
         f"🔴 Рекламных примеров: {stats['black_count']}\n"
         f"📚 Всего примеров: {stats['total']}\n"
         f"🧠 ML-проверка: {'ВКЛ' if rag_service.use_ml else 'ВЫКЛ'}\n"
-        f"🎯 Порог ML: {ml_classifier.threshold:.2f}"
+        f"🎯 Порог ML: {ml_classifier.config.threshold:.2f}"
     )
 
 

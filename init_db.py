@@ -10,7 +10,7 @@ async def init_database():
         # Create all tables
         await conn.run_sync(Base.metadata.create_all)
     
-    logger.debug("✅ Database tables created successfully!")
+    print("✅ Database tables created successfully!")
     await engine.dispose()
 
 if __name__ == "__main__":

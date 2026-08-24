@@ -3,7 +3,7 @@ from aiogram import Router, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from app.config import config
 from app.filters.rag_filter import RagFilter
-from app.services.rag_service import RAGService
+from app.services.rag_service import ragservice
 import logging
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ pending_messages = {}
 @router.message(RagFilter())
 async def forward_filtered_message(message: types.Message):
     """Пересылает сообщение с кнопками для добавления в белый/черный список"""
+    logger.debug("f: "+str(config.ADMIN_IDS.keys())+" "+str(message.chat.id))
     try:
         # Получаем текст сообщения
         text = message.text or message.caption or ""
@@ -23,7 +24,8 @@ async def forward_filtered_message(message: types.Message):
         pending_messages[message.message_id] = text
         
         # Пересылаем целевому пользователю
-        for user in config.TARGET_USER_ID:
+        
+        for user in config.ADMIN_IDS[message.chat.id]:
             forwarded = await message.forward(chat_id=user)
             
             # Создаем кнопки для действий
@@ -44,8 +46,8 @@ async def forward_filtered_message(message: types.Message):
                         callback_data=f"action_skip_{message.message_id}"
                     ),
                     InlineKeyboardButton(
-                        text="🚫 Ограничить пользователя", 
-                        callback_data=f"select_punisment_{message.from_user.id}"
+                        text="🚫 Глобан", 
+                        callback_data=f"confirm_globan_{message.from_user.id}"
                     )
                 ]
             ])
@@ -77,7 +79,7 @@ async def handle_action(callback: types.CallbackQuery):
     text = pending_messages.pop(msg_id)
     
     # Инициализируем RAG сервис
-    rag_service = RAGService()
+    rag_service = rag_service
     
     if action == 'skip':
         await callback.message.delete()
@@ -91,8 +93,9 @@ async def handle_action(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             f"✅ Добавлено в БЕЛЫЙ список!\n"
-            f"📝 ID: {doc_id[:8]}...\n"
-            f"📊 Всего примеров: {stats}"
+            
+            f"📝 ID: {doc_id[:8]}...\n" if callback.from_user.id == config.DEV_ID else ""
+            f"📊 Всего примеров: {stats}" if callback.from_user.id == config.DEV_ID else ""
         )
         await callback.answer("Добавлено в белый список ✅")
         logger.info(f"➕ Добавлено в белый список: {text[:50]}...")
@@ -104,8 +107,8 @@ async def handle_action(callback: types.CallbackQuery):
         
         await callback.message.edit_text(
             f"❌ Добавлено в ЧЕРНЫЙ список!\n"
-            f"📝 ID: {doc_id[:8]}...\n"
-            f"📊 Всего примеров: {stats}"
+            f"📝 ID: {doc_id[:8]}...\n" if callback.from_user.id == config.DEV_ID else ""
+            f"📊 Всего примеров: {stats}" if callback.from_user.id == config.DEV_ID else ""
         )
         await callback.answer("Добавлено в черный список ❌")
         logger.info(f"➕ Добавлено в черный список: {text[:50]}...")
