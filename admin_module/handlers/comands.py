@@ -70,23 +70,68 @@ async def rmadmin(message: types.Message):
         
 @router.message(Command("add_chat"))
 async def addstk(message: types.Message):
+    # Проверка прав (оставляем как есть)
     if message.from_user.id not in get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
+
+    # Парсим аргументы
     text = message.text.replace("/add_chat", "").strip()
     if not text:
         if message.reply_to_message and message.reply_to_message.text:
             text = message.reply_to_message.text
         else:
-            await message.reply(
-                "ℹ️ Используйте: /add_chat [chat_id]"
-            )
+            await message.reply("ℹ️ Используйте: /add_chat [chat_id]")
             return
-    r = add_chid(int(text.split()[0]))
+
+    try:
+        chat_id = int(text.split()[0])
+    except ValueError:
+        await message.reply("❌ Неверный ID чата. Должно быть число.")
+        return
+
+    # Проверяем, является ли бот администратором в этом чате
+    try:
+        bot_member = await message.bot.get_chat_member(chat_id, message.bot.id)
+    except Exception as e:
+        # Если бот не может получить информацию (например, чат не существует или бот не участник)
+        await message.reply(f"❌ Не удалось проверить права бота в чате {chat_id}. Ошибка: {e}")
+        return
+
+    # Статусы, при которых бот считается администратором
+    if bot_member.status not in ('administrator', 'creator'):
+        await message.reply(
+            f"❌ Бот не является администратором в чате {chat_id}.\n"
+            "Добавьте бота в чат как администратора и повторите команду."
+        )
+        return
+
+    # Дополнительно можно проверить наличие критически важных прав
+    required_perms = {
+        'can_delete_messages': 'удалять сообщения',
+        'can_restrict_members': 'ограничивать участников',
+        'can_ban_users': 'банить участников'
+    }
+    missing = []
+    if bot_member.status == 'administrator':
+        for perm, name in required_perms.items():
+            if not getattr(bot_member, perm, False):
+                missing.append(name)
+    if missing:
+        await message.reply(
+            f"⚠️ Бот в чате {chat_id} не имеет прав: {', '.join(missing)}.\n"
+            "Рекомендуется дать эти права для корректной работы."
+        )
+        # Можно либо прервать добавление, либо только предупредить.
+        # Здесь мы только предупреждаем, но продолжаем добавление.
+        # Если хотите запретить — раскомментируйте return.
+
+    # Добавляем чат в сетку
+    r = add_chid(chat_id)
     if r:
-        await message.answer("Чат с id" +text.split()[0] + " добавлен в сетку" )
+        await message.answer(f"✅ Чат с id {chat_id} добавлен в сетку")
     else:
-        await message.answer("Чат с id" +text.split()[0] + " уже в сетке" )
+        await message.answer(f"ℹ️ Чат с id {chat_id} уже в сетке")
         
 @router.message(Command("rm_chat"))
 async def rmstk(message: types.Message):

@@ -47,7 +47,7 @@ async def forward_filtered_message(message: types.Message):
                     ),
                     InlineKeyboardButton(
                         text="🚫 Глобан", 
-                        callback_data=f"confirm_globan_{message.from_user.id}"
+                        callback_data=f"confirm_globan_{message.message_id}_{message.from_user.id}"
                     )
                 ]
             ])

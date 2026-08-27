@@ -65,27 +65,54 @@ async def captcha_callback(callback: CallbackQuery, bot: Bot):
     
 @router.callback_query(lambda c: c.data.startswith('confirm_globan'))
 async def handle_0(callback: types.CallbackQuery):
-    if not callback.data:
-      return
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        
-        InlineKeyboardButton(text="✅ Подтвердить", callback_data="globan_"+callback.data.split("_")[2])
-    ]])
-    if not callback.message:
+    parts = callback.data.split('_')
+    if len(parts) < 3:
         return
-    await callback.message.answer("Вы точно хотите выдать глобан пользователю "+callback.data.split("_")[2]+ "?", reply_markup=keyboard)
+    msg_id = int(parts[1])      # ID пересланного сообщения
+    user_id = int(parts[2])     # ID пользователя, которого баним
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(
+            text="✅ Подтвердить",
+            callback_data=f"globan_{user_id}_{msg_id}"   # передаём оба ID
+        )
+    ]])
+    await callback.message.answer(
+        f"Вы точно хотите выдать глобан пользователю {user_id}?",
+        reply_markup=keyboard
+    )
     await callback.answer()
 
 
 @router.callback_query(lambda c: c.data.startswith('globan'))
 async def handle_1(callback: types.CallbackQuery):
     from main import bot
-    if not callback.data:
+
+    parts = callback.data.split('_')
+    if len(parts) < 3:
+        await callback.answer("Ошибка данных")
         return
+
+    user_id = int(parts[1])
+    msg_id = int(parts[2])   # ID пересланного сообщения
+
+    # Удаляем пересланное сообщение
+    try:
+        await bot.delete_message(chat_id=callback.message.chat.id, message_id=msg_id)
+    except Exception as e:
+        logger.error(f"Не удалось удалить пересланное сообщение: {e}")
+
+    # Удаляем сообщение с кнопкой подтверждения
+    try:
+        await callback.message.delete()
+    except Exception as e:
+        logger.error(f"Не удалось удалить сообщение подтверждения: {e}")
+
+    # Выполняем бан во всех чатах
     for chat_id in config.CHATS_IDS:
         try:
-            await bot.ban_chat_member(chat_id=chat_id, user_id=int(callback.data.split("_")[1]))
+            await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
         except TelegramBadRequest:
-            # Вызывается, если бота удалили из чата или у него нет прав админа
-            continue 
-    await callback.answer()
+            continue
+
+    await callback.answer("✅ Пользователь забанен, сообщение удалено")

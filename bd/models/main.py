@@ -16,7 +16,7 @@ class User(Base):
     last_message_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     first_message_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     
-    can_send_photos: Mapped[Optional[bool]] = mapped_column(Boolean,default=True)
+    can_send_photos: Mapped[Optional[bool]] = mapped_column(Boolean,default=False)
 
 
 
