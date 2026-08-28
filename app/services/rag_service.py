@@ -36,9 +36,10 @@ class RAGService:
             return True, 0.95, "heuristic_url"
         # явные коммерческие фразы
         if re.search(r'(скидка|акция|купить|заказать|цена|рублей|бесплатно|реклама)', text, re.I):
-            # но только если есть цифры или знак рубля
+            
             if re.search(r'\d+\s*[%₽руб]', text):
                 return True, 0.90, "heuristic_price"
+            return True, 0.85, "heuristic"
         return None
     @lru_cache(maxsize=2048)
     def check_advertisement(

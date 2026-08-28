@@ -6,3 +6,6 @@ build
 venv
 **__pycache__**
 *.db
+*.backup
+*.pkl
+*.tar

@@ -7,7 +7,7 @@ load_dotenv()
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN")
     DEV_ID = int(os.getenv("DEV_ID", 6498513606))
-    
+    debug = os.getenv("DEBUG","False").lower() == "true"
     RAG_THRESHOLD = float(os.getenv("RAG_THRESHOLD", 0.65))
     BAD_WORDS = []
     try:

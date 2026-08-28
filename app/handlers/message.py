@@ -5,7 +5,7 @@ from app.config import config
 from app.filters.rag_filter import RagFilter
 from app.services.rag_service import ragservice
 import logging
-
+from storage import add_globan_data,generate_key
 logger = logging.getLogger(__name__)
 router = Router()
 
@@ -24,6 +24,9 @@ async def forward_filtered_message(message: types.Message):
         pending_messages[message.message_id] = text
         
         # Пересылаем целевому пользователю
+        
+
+        key = add_globan_data(message.from_user.id, message.message_id, message.chat.id)
         
         for user in config.ADMIN_IDS[message.chat.id]:
             forwarded = await message.forward(chat_id=user)
@@ -47,7 +50,7 @@ async def forward_filtered_message(message: types.Message):
                     ),
                     InlineKeyboardButton(
                         text="🚫 Глобан", 
-                        callback_data=f"confirm_globan_{message.message_id}_{message.from_user.id}"
+                        callback_data = f"confirm_globan_{key}"
                     )
                 ]
             ])

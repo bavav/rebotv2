@@ -86,7 +86,7 @@ async def upsert_user_and_increment_messages(
     а также увеличивает счетчик сообщений на +1 (если не rp).
     Возвращает объект User.
     """
-    from main import bot  # импорт для restrict_chat_member
+    
 
     stmt = select(User).where(User.id == user_id)
     result = await session.execute(stmt)
@@ -98,17 +98,8 @@ async def upsert_user_and_increment_messages(
         if not rp:
             user.message_count = user.message_count + 1
             user.last_message_at = datetime.now()
-            # Логика разблокировки (оставляем как было)
-            if user.message_count > 1 and (user.first_message_at + timedelta(minutes=5)) <= datetime.now() and not user.can_send_photos:
-                user.can_send_photos = True
-                current_perms = await bot.get_chat_member(chat_id=chat_id, user_id=user_id)
-                if current_perms["can_send_messages"] == True:
-                    current_perms["can_send_photos"] = True
-                    await bot.restrict_chat_member(
-                        chat_id=chat_id,
-                        user_id=user_id,
-                        permissions=ChatPermissions(**current_perms)
-                    )
+            
+            
         return user
     else:
         # Создаём нового
