@@ -1,58 +1,80 @@
 import asyncio
-import logging
-from aiogram import Bot, Dispatcher
-from aiogram.enums import ParseMode
-from aiogram.fsm.storage.memory import MemoryStorage
+import json
+import aio_pika
+from aiogram import Bot
+from aiogram.types import Message,CallbackQuery,ChatMemberUpdated
 
-from app.config import config
-from app.handlers import admin_router, message_router
-from admin_module.handlers.comands import router as admin_module_router
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
-from ban_module.handlers.main import router as ban_router
-from bd.models.main import Base
-from bd.mdlwr import DbSessionMiddleware ,DbUserUpdaterMiddleware
+from shared.app.config import settings
+from shared.app.logger import configure_logging, get_logger
+from shared.app.rabbitmq import RabbitMQConsumer
+#from .rutering.comands import hndl,hndl_callback
+configure_logging(settings.log_level)
+logger = get_logger(__name__)
 
-# Настройка логирования
-if config.debug == True:
-    logging.basicConfig(
-        level=logging.DEBUG,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-else:
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-logger = logging.getLogger(__name__)
-bot = Bot(token=config.BOT_TOKEN)#, parse_mode=ParseMode.HTML)
-storage = MemoryStorage()
-dp = Dispatcher(storage=storage)
+REPLY_TEXT = "Привет, я заглушка"
+bot = Bot(token=settings.telegram_bot_token)
+
+
+
+from ads_worker.app.admin_module.handlers.comands import rout
+from ads_worker.app.app.handlers.message import stable
+print(stable())
+from ads_worker.app.ban_module.handlers.main import stable
+print(stable())
+async def process_message(message: aio_pika.IncomingMessage):
+    async with message.process():
+        body = json.loads(message.body)
+        # Восстанавливаем объект aiogram Message из словаря
+        event_type = message.headers.get("event_type")
+        print(event_type)
+        if event_type == "message":
+            msg = Message.model_validate(body)
+            msg = msg.as_(bot)
+            await rout.resolve(event_type,msg)
+            logger.info(
+                "Received message",
+                body={
+                    "chat_id": msg.chat.id,
+                    "user_id": msg.from_user.id,
+                    "text": msg.text if msg.text else "",
+                },
+            )
+        
+        elif event_type == "callback_query":
+            callback = CallbackQuery.model_validate(body)
+            # Привязываем message к боту и создаём новый callback с этим message
+            bound_message = callback.message.as_(bot)
+            new_callback = callback.model_copy(update={"message": bound_message}).as_(bot)
+            await rout.resolve(event_type, new_callback)
+            
+            logger.info("Callback handeled",chat_id=callback.message.chat.id,msg_text=callback.message.text)
+        elif event_type == "chat_member":
+            chat_member_update = ChatMemberUpdated.model_validate(body)
+            chat_member_update = chat_member_update.as_(bot)
+            await rout.resolve(event_type,chat_member_update)
+            logger.info("Chat member handeled")
+        
+        
+        
+        
+
+
 async def main():
-    # Инициализация бота
-    engine = create_async_engine("sqlite+aiosqlite:///database.db")
-    
-    session_maker = async_sessionmaker(bind=engine, expire_on_commit=False)
-    async with engine.begin() as conn:
-        # Create all tables
-        await conn.run_sync(Base.metadata.create_all)
-    
-    # Регистрация роутеров
-    dp.include_router(admin_router)
-    message_router.message.outer_middleware(DbUserUpdaterMiddleware(session_maker))
-    
-    dp.include_router(message_router)
-
-    dp.include_router(admin_module_router)
-    
-    ban_router.message.middleware(DbSessionMiddleware(session_maker=session_maker))
-    dp.include_router(ban_router)
-    logger.info("🚀 Бот запущен!")
-    
+    # Имя очереди фиксировано для данного типа воркера.
+    # Все реплики этого воркера будут использовать одну и ту же очередь.
+    consumer = RabbitMQConsumer(
+        url=settings.rabbitmq_url,
+        exchange_name=settings.rabbitmq_exchange,
+        queue_name="reply_worker_queue",   # например, для ads_worker будет "ads_worker_queue"
+    )
+    await consumer.connect()
+    await consumer.consume(process_message)
+    logger.info("Worker started, waiting for messages...")
     try:
-        await dp.start_polling(bot)
+        await asyncio.Future()  # бесконечное ожидание
     finally:
-        await bot.session.close()
+        await consumer.close()
 
-    
+
 if __name__ == "__main__":
     asyncio.run(main())

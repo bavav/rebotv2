@@ -2,11 +2,11 @@ from typing import Tuple, Optional, Dict, List
 import logging
 from .vector_store import VectorStore
 from .ml_model import SpamClassifier
-from app.config import config
+from ...app.config import config
 logger = logging.getLogger(__name__)
 import re
 from functools import lru_cache
-from app.services.onnx_model import SpamShieldClassifier
+from ...app.services.onnx_model import SpamShieldClassifier
 class RAGService:
     _instance = None
     

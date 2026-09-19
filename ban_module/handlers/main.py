@@ -1,7 +1,7 @@
 from aiogram import Bot, Router, types, F
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, ChatPermissions, InlineKeyboardMarkup, InlineKeyboardButton, User
-from app.config import config
+from ...app.config import config
 import logging
 from aiogram.types import ChatMemberUpdated
 from aiogram.filters import ChatMemberUpdatedFilter, IS_NOT_MEMBER, IS_MEMBER
@@ -16,11 +16,11 @@ from aiogram import Bot, Router, F
 from aiogram.types import ChatPermissions, ChatMemberUpdated, InlineKeyboardButton, CallbackQuery, User
 from aiogram.filters import IS_NOT_MEMBER, IS_MEMBER, ChatMemberUpdatedFilter
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from storage import add_globan_data, endget_globan_data,get_globan_data
+from ...storage import add_globan_data, endget_globan_data,get_globan_data
 router = Router()
 rights_cache = {}
 from aiogram.types import ChatPermissions, ChatMember
-
+from ads_worker.app.admin_module.handlers.comands import rout,F
 def get_permissions_from_member(member: ChatMember) -> ChatPermissions | None:
     """
     Извлекает права пользователя из объекта ChatMember.
@@ -114,15 +114,21 @@ async def send_captcha(bot: Bot, chat_id: int, user: User):
         parse_mode=ParseMode.HTML
     )
 
-@router.chat_member(
-    ChatMemberUpdatedFilter(member_status_changed=IS_NOT_MEMBER >> IS_MEMBER)
-)
-async def on_user_join(event: ChatMemberUpdated, bot: Bot):
-    user = event.new_chat_member.user
-    await send_captcha(bot, event.chat.id, user)
 
-@router.callback_query(F.data.startswith("captcha_"))
-async def captcha_callback(callback: CallbackQuery, bot: Bot):
+@rout.event("chat_member")
+async def on_user_join(event: ChatMemberUpdated):
+    
+    old = event.old_chat_member
+    new = event.new_chat_member
+    if old.status in ("left", "kicked") and new.status == "member":
+        
+    
+        user = event.new_chat_member.user
+        await send_captcha(event.bot, event.chat.id, user)
+    
+
+@rout.event("callback_query",F.data.startswith("captcha_"))
+async def captcha_callback(callback: CallbackQuery):
     user_id = int(callback.data.split("_")[-1])
     chat_id = callback.message.chat.id
 
@@ -133,10 +139,10 @@ async def captcha_callback(callback: CallbackQuery, bot: Bot):
     old_perms = rights_cache.pop((chat_id, user_id), None)
     if old_perms is None:
         # Если не нашли - используем дефолтные права чата (безопасный fallback)
-        chat = await bot.get_chat(chat_id)
+        chat = await callback.bot.get_chat(chat_id)
         old_perms = chat.permissions
 
-    await bot.restrict_chat_member(
+    await callback.bot.restrict_chat_member(
         chat_id=chat_id,
         user_id=user_id,
         permissions=old_perms
@@ -147,7 +153,7 @@ async def captcha_callback(callback: CallbackQuery, bot: Bot):
     
 
 
-@router.callback_query(lambda c: c.data.startswith('confirm_globan_'))
+@rout.event("callback_query",F.data.startswith('confirm_globan_'))
 async def handle_0(callback: types.CallbackQuery):
     parts = callback.data.split('_')
     if len(parts) < 2:
@@ -172,9 +178,9 @@ async def handle_0(callback: types.CallbackQuery):
     await callback.answer()
 
 
-@router.callback_query(lambda c: c.data.startswith('globan_'))
+@rout.event("callback_query",F.data.startswith('globan_'))
 async def handle_1(callback: types.CallbackQuery):
-    from main import bot
+    from ...main import bot
     parts = callback.data.split('_')
     if len(parts) < 2:
         await callback.answer("Ошибка данных")
@@ -206,3 +212,6 @@ async def handle_1(callback: types.CallbackQuery):
             continue
 
     await callback.answer("✅ Пользователь забанен, сообщение удалено")
+    
+def stable():
+    return "ok"

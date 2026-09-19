@@ -1,8 +1,8 @@
 from aiogram.filters import BaseFilter
 from aiogram.types import Message
 import logging
-from app.services.rag_service import ragservice
-from app.config import config
+from ...app.services.rag_service import ragservice
+from ...app.config import config
 from typing import Dict,Any
 logger = logging.getLogger(__name__)
 

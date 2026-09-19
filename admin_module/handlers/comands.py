@@ -1,12 +1,13 @@
 from aiogram import Router, types
 from aiogram.filters import Command
-from app.config import config, get_admins, add_aid, rm_aid, add_chid, rm_chid
+from ....app.app.config import config, get_admins, add_aid, rm_aid, add_chid, rm_chid
 import logging
 
 logger = logging.getLogger("admin_module" + __name__)
 router = Router()
-
-
+import shared.app.router as rt
+rout = rt.RabbitRouter()
+F = rt.MagicFilter()
 # ========== Вспомогательные функции ==========
 async def resolve_user_id(bot, user_input: str) -> int | None:
     """Получить user_id из числа или username (с @ или без)."""
@@ -72,7 +73,8 @@ def is_admin_or_dev(user_id: int) -> bool:
 
 
 # ========== Существующие команды с улучшениями ==========
-@router.message(Command("add_admin"))
+
+@rout.event("message",F.text.startswith("/add_admin"))
 async def add_admin(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")
@@ -82,7 +84,7 @@ async def add_admin(message: types.Message):
     reply = message.reply_to_message
     chat_id = None
     user_id = None
-
+    
     # Если команда в группе, текущий чат используется по умолчанию
     if message.chat.type != "private":
         chat_id = message.chat.id
@@ -138,7 +140,7 @@ async def add_admin(message: types.Message):
         await message.answer(f"ℹ️ Админ {user_display} уже управляет чатом {chat_display}")
 
 
-@router.message(Command("rm_admin"))
+@rout.event("message",F.text.startswith("/rm_admin"))
 async def rm_admin(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")
@@ -195,7 +197,7 @@ async def rm_admin(message: types.Message):
         await message.answer(f"ℹ️ Пользователь {user_display} не является админом чата {chat_display}")
 
 
-@router.message(Command("add_chat"))
+@rout.event("message",F.text.startswith("/add_chat"))
 async def add_chat(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")
@@ -259,7 +261,7 @@ async def add_chat(message: types.Message):
         await message.answer(f"ℹ️ Чат {chat_display} уже в сетке")
 
 
-@router.message(Command("rm_chat"))
+@rout.event("message",F.text.startswith("/rm_chat"))
 async def rm_chat(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")
@@ -292,7 +294,7 @@ async def rm_chat(message: types.Message):
         await message.answer(f"ℹ️ Чат {chat_display} не в сетке")
 
 
-@router.message(Command("get_admins"))
+@rout.event("message",F.text.startswith("/get_admins"))
 async def get_admins_cmd(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")
@@ -310,7 +312,7 @@ async def get_admins_cmd(message: types.Message):
 
 
 # ========== Новые команды для работы с текущим чатом ==========
-@router.message(Command("add_admin_here"))
+@rout.event("message",F.text.startswith("/add_admin_here"))
 async def add_admin_here(message: types.Message):
     if message.chat.type == "private":
         await message.reply("❌ Эта команда работает только в группе.")
@@ -349,7 +351,7 @@ async def add_admin_here(message: types.Message):
         await message.answer(f"ℹ️ Админ {user_display} уже управляет чатом {chat_display}")
 
 
-@router.message(Command("rm_admin_here"))
+@rout.event("message",F.text.startswith("/rm_admin_here"))
 async def rm_admin_here(message: types.Message):
     if message.chat.type == "private":
         await message.reply("❌ Эта команда работает только в группе.")
@@ -388,7 +390,7 @@ async def rm_admin_here(message: types.Message):
         await message.answer(f"ℹ️ Пользователь {user_display} не является админом чата {chat_display}")
 
 
-@router.message(Command("add_this_chat"))
+@rout.event("message",F.text.startswith("/add_this_chat"))
 async def add_this_chat(message: types.Message):
     if message.chat.type == "private":
         await message.reply("❌ Эта команда работает только в группе.")
@@ -407,7 +409,7 @@ async def add_this_chat(message: types.Message):
         await message.answer(f"ℹ️ Чат {chat_display} уже в сетке")
 
 
-@router.message(Command("rm_this_chat"))
+@rout.event("message",F.text.startswith("/rm_this_chat"))
 async def rm_this_chat(message: types.Message):
     if message.chat.type == "private":
         await message.reply("❌ Эта команда работает только в группе.")
@@ -427,7 +429,7 @@ async def rm_this_chat(message: types.Message):
 
 
 # ========== Справка ==========
-@router.message(Command("help_admin"))
+@rout.event("message",F.text.startswith("/help_admin"))
 async def help_admin(message: types.Message):
     if not is_admin_or_dev(message.from_user.id):
         await message.reply("⛔️ У вас нет прав")

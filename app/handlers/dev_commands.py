@@ -1,9 +1,9 @@
 from aiogram import Router, types, F
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from app.services.rag_service import ragservice
-from app.services.onnx_model import SpamShieldClassifier
-from app.config import config
+from ...app.services.rag_service import ragservice
+from ...app.services.onnx_model import SpamShieldClassifier
+from ...app.config import config
 import logging
 
 logger = logging.getLogger(__name__)
@@ -16,12 +16,12 @@ from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.state import State, StatesGroup
 
 # Фабрика для кнопок главного меню (мут/бан)
-
+from ads_worker.app.admin_module.handlers.comands import rout,F
 
 
 # ==================== УПРАВЛЕНИЕ ПРИМЕРАМИ ====================
 
-@router.message(Command("add_white"))
+@rout.event("message",F.text.startswith("/add_white"))
 async def add_white_example(message: types.Message):
     """Добавить безопасный пример (НЕ реклама)"""
     if message.from_user.id not in config.get_admins():
@@ -52,7 +52,7 @@ async def add_white_example(message: types.Message):
         await message.reply("❌ Ошибка при добавлении примера")
 
 
-@router.message(Command("add_black"))
+@rout.event("message",F.text.startswith("/add_black"))
 async def add_black_example(message: types.Message):
     """Добавить рекламный пример"""
     if message.from_user.id not in config.get_admins():
@@ -86,7 +86,7 @@ async def add_black_example(message: types.Message):
 
 # ==================== УДАЛЕНИЕ ПРИМЕРОВ ====================
 
-@router.message(Command("delete_white"))
+@rout.event("message",F.text.startswith("/delete_white"))
 async def delete_white_example(message: types.Message):
     """Удалить безопасный пример по тексту"""
     if message.from_user.id not in config.get_admins():
@@ -135,7 +135,7 @@ async def delete_white_example(message: types.Message):
     )
 
 
-@router.message(Command("delete_black"))
+@rout.event("message",F.text.startswith("/delete_black"))
 async def delete_black_example(message: types.Message):
     """Удалить рекламный пример по тексту"""
     if message.from_user.id not in config.get_admins():
@@ -185,7 +185,7 @@ async def delete_black_example(message: types.Message):
 
 # ==================== ПОИСК И ПРОСМОТР ====================
 
-@router.message(Command("find_white"))
+@rout.event("message",F.text.startswith("/find_white"))
 async def find_white_example(message: types.Message):
     """Найти безопасные примеры по тексту"""
     if message.from_user.id not in config.get_admins():
@@ -219,7 +219,7 @@ async def find_white_example(message: types.Message):
     await message.reply(result)
 
 
-@router.message(Command("find_black"))
+@rout.event("message",F.text.startswith("/find_black"))
 async def find_black_example(message: types.Message):
     """Найти рекламные примеры по тексту"""
     if message.from_user.id not in config.get_admins():
@@ -250,7 +250,7 @@ async def find_black_example(message: types.Message):
     await message.reply(result)
 
 
-@router.message(Command("list_white"))
+@rout.event("message",F.text.startswith("/list_white"))
 async def list_white_examples(message: types.Message):
     """Показать список безопасных примеров"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -280,7 +280,7 @@ async def list_white_examples(message: types.Message):
     await message.reply(result)
 
 
-@router.message(Command("list_black"))
+@rout.event("message",F.text.startswith("/list_black"))
 async def list_black_examples(message: types.Message):
     """Показать список рекламных примеров"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -312,7 +312,7 @@ async def list_black_examples(message: types.Message):
 
 # ==================== УПРАВЛЕНИЕ ML МОДЕЛЬЮ ====================
 
-@router.message(Command("set_model"))
+@rout.event("message",F.text.startswith("/set_model"))
 async def set_model(message: types.Message):
     """Изменить ML-модель"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -354,7 +354,7 @@ async def set_model(message: types.Message):
         )
 
 
-@router.message(Command("set_ml_threshold"))
+@rout.event("message",F.text.startswith("/set_ml_threshold"))
 async def set_ml_threshold(message: types.Message):
     """Установить порог ML-модели"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -384,7 +384,7 @@ async def set_ml_threshold(message: types.Message):
         )
 
 
-@router.message(Command("set_templates"))
+@rout.event("message",F.text.startswith("/set_templates"))
 async def set_templates(message: types.Message):
     """Изменить шаблоны для ML-модели"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -420,7 +420,7 @@ async def set_templates(message: types.Message):
     )
 
 
-@router.message(Command("ml_stats"))
+@rout.event("message",F.text.startswith("/ml_stats"))
 async def ml_stats(message: types.Message):
     """Показать статистику ML-модели"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -457,7 +457,7 @@ async def ml_stats(message: types.Message):
             f"📚 Всего: {stats['total']}"
         )
 
-@router.message(Command("toggle_ml"))
+@rout.event("message",F.text.startswith("/toggle_ml"))
 async def toggle_ml(message: types.Message):
     """Включить/выключить ML-проверку"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -475,7 +475,7 @@ async def toggle_ml(message: types.Message):
 
 # ==================== ПРОВЕРКА И СТАТИСТИКА ====================
 
-@router.message(Command("check"))
+@rout.event("message",F.text.startswith("/check"))
 async def check_text(message: types.Message):
     """Проверить текст с подробным выводом"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
@@ -518,7 +518,7 @@ async def check_text(message: types.Message):
     await message.reply(result_text)
 
 
-@router.message(Command("stats"))
+@rout.event("message",F.text.startswith("/stats"))
 async def get_stats(message: types.Message):
     """Показать общую статистику"""
     if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:

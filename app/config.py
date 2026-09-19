@@ -38,7 +38,7 @@ class Config:
     ML_THRESHOLD = float(os.getenv("ML_THRESHOLD", 0.5))
     USE_ML = True
     use_onnx = True
-    SPAMSHIELD_MODEL_PATH = "./shieldmodel"
+    SPAMSHIELD_MODEL_PATH = "./workers/ads_worker/app/shieldmodel"
     def save_bw(self):
         with open("bad_words.pkl","wb") as f:
             pickle.dump(self.BAD_WORDS,f)

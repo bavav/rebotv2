@@ -1,18 +1,18 @@
 # message.py - альтернативный вариант с кнопками на пересланном сообщении
 from aiogram import Router, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
-from app.config import config
-from app.filters.rag_filter import RagFilter
-from app.services.rag_service import ragservice
+from ...app.config import config
+from ...app.filters.rag_filter import RagFilter
+from ...app.services.rag_service import ragservice
 import logging
-from storage import add_globan_data,generate_key
+from ...storage import add_globan_data,generate_key
 logger = logging.getLogger(__name__)
 router = Router()
 
 # Словарь для хранения текстов сообщений
 pending_messages = {}
-
-@router.message(RagFilter())
+from ads_worker.app.admin_module.handlers.comands import rout,F
+@rout.event("message",RagFilter())
 async def forward_filtered_message(message: types.Message):
     """Пересылает сообщение с кнопками для добавления в белый/черный список"""
     logger.debug("f: "+str(config.ADMIN_IDS.keys())+" "+str(message.chat.id))
@@ -115,3 +115,6 @@ async def handle_action(callback: types.CallbackQuery):
         )
         await callback.answer("Добавлено в черный список ❌")
         logger.info(f"➕ Добавлено в черный список: {text[:50]}...")
+        
+def stable():
+    return "ok"
