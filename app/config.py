@@ -10,20 +10,23 @@ class Config:
     debug = os.getenv("DEBUG","False").lower() == "true"
     RAG_THRESHOLD = float(os.getenv("RAG_THRESHOLD", 0.65))
     BAD_WORDS = []
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
+    REDIS_DB: int = 0
     try:
-        with open("bad_words.pkl","rb") as f:
+        with open("./workers/ads_worker/app/bad_words.pkl","rb") as f:
             BAD_WORDS = pickle.load(f)
     except FileNotFoundError:
         pass
     CHATS_IDS = []
     try:
-        with open("setka.pkl","rb") as f:
+        with open("./workers/ads_worker/app/setka.pkl","rb") as f:
             CHATS_IDS = pickle.load(f)
     except FileNotFoundError:
         pass
     ADMIN_IDS: Dict[int,List] = {} #chat_id,[aids]
     try:
-        with open("adm.pkl","rb") as f:
+        with open("./workers/ads_worker/app/adm.pkl","rb") as f:
             ADMIN_IDS = pickle.load(f)
     except FileNotFoundError:
         pass
@@ -40,13 +43,13 @@ class Config:
     use_onnx = True
     SPAMSHIELD_MODEL_PATH = "./workers/ads_worker/app/shieldmodel"
     def save_bw(self):
-        with open("bad_words.pkl","wb") as f:
+        with open("./workers/ads_worker/app/bad_words.pkl","wb") as f:
             pickle.dump(self.BAD_WORDS,f)
     def save_ids(self):
-        with open("setka.pkl","wb") as f:
+        with open("./workers/ads_worker/app/setka.pkl","wb") as f:
             pickle.dump(self.CHATS_IDS,f)
     def save_aids(self):
-        with open("adm.pkl","wb") as f:
+        with open("./workers/ads_worker/app/adm.pkl","wb") as f:
             pickle.dump(self.ADMIN_IDS,f)
         
     

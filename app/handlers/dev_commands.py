@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 router = Router()
 rag_service = ragservice
 ml_classifier = ragservice.ml_classifier
-
+import uuid
+from cachetools import TTLCache
 
 from aiogram.filters.callback_data import CallbackData
 from aiogram.fsm.state import State, StatesGroup
@@ -18,13 +19,22 @@ from aiogram.fsm.state import State, StatesGroup
 # Фабрика для кнопок главного меню (мут/бан)
 from ads_worker.app.admin_module.handlers.comands import rout,F
 
+# Временное хранилище: token -> текст для удаления.
+# TTL = 10 минут, максимум 1000 записей.
+_pending_deletes: TTLCache = TTLCache(maxsize=1000, ttl=600)
 
+
+def _register_delete(text: str) -> str:
+    """Регистрирует текст и возвращает короткий токен (16 hex-символов)."""
+    token = uuid.uuid4().hex[:16]
+    _pending_deletes[token] = text
+    return token
 # ==================== УПРАВЛЕНИЕ ПРИМЕРАМИ ====================
 
 @rout.event("message",F.text.startswith("/add_white"))
 async def add_white_example(message: types.Message):
     """Добавить безопасный пример (НЕ реклама)"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
     text = message.text.replace("/add_white", "").strip()
@@ -55,7 +65,7 @@ async def add_white_example(message: types.Message):
 @rout.event("message",F.text.startswith("/add_black"))
 async def add_black_example(message: types.Message):
     """Добавить рекламный пример"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -86,10 +96,10 @@ async def add_black_example(message: types.Message):
 
 # ==================== УДАЛЕНИЕ ПРИМЕРОВ ====================
 
-@rout.event("message",F.text.startswith("/delete_white"))
+@rout.event("message", F.text.startswith("/delete_white"))
 async def delete_white_example(message: types.Message):
     """Удалить безопасный пример по тексту"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -109,20 +119,22 @@ async def delete_white_example(message: types.Message):
 
     if not matches:
         await message.reply(
-          f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`")
+            f"❌ Не найдено безопасных примеров с текстом:\n`{text[:100]}`")
         return
 
     preview = "\n".join([f"• {m['text'][:60]}..." for m in matches[:5]])
     if len(matches) > 5:
         preview += f"\n... и еще {len(matches) - 5} примеров"
 
+    token = _register_delete(text)
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-          text="✅ Да, удалить",
-          callback_data=f"confirm_delete_white_{text[:50]}")],
+            text="✅ Да, удалить",
+            callback_data=f"cdw_{token}")],
         [InlineKeyboardButton(
-          text="❌ Отмена",
-          callback_data="cancel_delete")]
+            text="❌ Отмена",
+            callback_data="cancel_delete")]
     ])
 
     await message.reply(
@@ -134,11 +146,10 @@ async def delete_white_example(message: types.Message):
         reply_markup=keyboard
     )
 
-
-@rout.event("message",F.text.startswith("/delete_black"))
+@rout.event("message", F.text.startswith("/delete_black"))
 async def delete_black_example(message: types.Message):
     """Удалить рекламный пример по тексту"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -158,19 +169,22 @@ async def delete_black_example(message: types.Message):
 
     if not matches:
         await message.reply(
-          f"❌ Не найдено рекламных примеров с текстом:\n`{text[:100]}`")
+            f"❌ Не найдено рекламных примеров с текстом:\n`{text[:100]}`")
         return
 
     preview = "\n".join([f"• {m['text'][:60]}..." for m in matches[:5]])
     if len(matches) > 5:
         preview += f"\n... и еще {len(matches) - 5} примеров"
 
+    token = _register_delete(text)
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-          text="✅ Да, удалить",
-          callback_data=f"confirm_delete_black_{text[:50]}"
-        )],
-        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_delete")]
+            text="✅ Да, удалить",
+            callback_data=f"cdb_{token}")],
+        [InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data="cancel_delete")]
     ])
 
     await message.reply(
@@ -181,14 +195,12 @@ async def delete_black_example(message: types.Message):
         f"Удалить все эти примеры?",
         reply_markup=keyboard
     )
-
-
 # ==================== ПОИСК И ПРОСМОТР ====================
 
 @rout.event("message",F.text.startswith("/find_white"))
 async def find_white_example(message: types.Message):
     """Найти безопасные примеры по тексту"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -222,7 +234,7 @@ async def find_white_example(message: types.Message):
 @rout.event("message",F.text.startswith("/find_black"))
 async def find_black_example(message: types.Message):
     """Найти рекламные примеры по тексту"""
-    if message.from_user.id not in config.get_admins():
+    if message.from_user.id not in config.get_admins() and message.from_user.id != config.DEV_ID:
         await message.reply("⛔️ У вас нет прав")
         return
 
@@ -527,6 +539,13 @@ async def get_stats(message: types.Message):
     
     stats = rag_service.get_statistics()
     
+    if ml_classifier.tupe == "shield":
+        ml_threshold = ml_classifier.threshold
+    elif ml_classifier.tupe == "noshield":
+        ml_threshold = ml_classifier.config.threshold
+    else:
+        ml_threshold = 0.0
+
     await message.reply(
         f"📊 Общая статистика:\n"
         f"━━━━━━━━━━━━━━━━\n"
@@ -534,18 +553,25 @@ async def get_stats(message: types.Message):
         f"🔴 Рекламных примеров: {stats['black_count']}\n"
         f"📚 Всего примеров: {stats['total']}\n"
         f"🧠 ML-проверка: {'ВКЛ' if rag_service.use_ml else 'ВЫКЛ'}\n"
-        f"🎯 Порог ML: {ml_classifier.config.threshold:.2f}"
+        f"🎯 Порог ML: {ml_threshold:.2f}"
     )
 
 
 # ==================== CALLBACK-ОБРАБОТЧИКИ ====================
 
-@router.callback_query(F.data.startswith("confirm_delete_white_"))
+@rout.event("callback_query", F.data.startswith("cdw_"))
 async def confirm_delete_white(callback: types.CallbackQuery):
     """Подтверждение удаления из белой коллекции"""
-    text = callback.data.replace("confirm_delete_white_", "")
+    token = callback.data[len("cdw_"):]
+    text = _pending_deletes.pop(token, None)
+
+    if text is None:
+        await callback.answer("⌛️ Ссылка устарела, попробуйте снова",
+                              show_alert=True)
+        return
+
     count, texts = rag_service.delete_white_by_text(text)
-    
+
     if count > 0:
         await callback.message.edit_text(
             f"✅ Удалено {count} безопасных примеров:\n"
@@ -555,16 +581,23 @@ async def confirm_delete_white(callback: types.CallbackQuery):
         )
     else:
         await callback.message.edit_text("❌ Не удалось удалить примеры")
-    
+
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("confirm_delete_black_"))
+@rout.event("callback_query", F.data.startswith("cdb_"))
 async def confirm_delete_black(callback: types.CallbackQuery):
     """Подтверждение удаления из черной коллекции"""
-    text = callback.data.replace("confirm_delete_black_", "")
+    token = callback.data[len("cdb_"):]
+    text = _pending_deletes.pop(token, None)
+
+    if text is None:
+        await callback.answer("⌛️ Ссылка устарела, попробуйте снова",
+                              show_alert=True)
+        return
+
     count, texts = rag_service.delete_black_by_text(text)
-    
+
     if count > 0:
         await callback.message.edit_text(
             f"✅ Удалено {count} рекламных примеров:\n"
@@ -574,14 +607,16 @@ async def confirm_delete_black(callback: types.CallbackQuery):
         )
     else:
         await callback.message.edit_text("❌ Не удалось удалить примеры")
-    
+
     await callback.answer()
 
 
-@router.callback_query(F.data == "cancel_delete")
+@rout.event("callback_query", F.data.startswith("cancel_delete"))
 async def cancel_delete(callback: types.CallbackQuery):
     """Отмена удаления"""
     await callback.message.edit_text("❌ Удаление отменено")
     await callback.answer()
+
+
 
 

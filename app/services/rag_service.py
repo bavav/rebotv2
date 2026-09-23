@@ -41,7 +41,7 @@ class RAGService:
                 return True, 0.90, "heuristic_price"
             return True, 0.85, "heuristic"
         return None
-    @lru_cache(maxsize=2048)
+    
     def check_advertisement(
         self,
         text: str,
@@ -65,7 +65,8 @@ class RAGService:
 
         # 4. RAG-проверка (только для новых)
         rag_result = self.vector_store.classify_text_advanced(text)
-        if rag_result['is_ad']:
+        logger.info(rag_result)
+        if rag_result['is_ad'] == True:
             return (
                 True,
                 rag_result['score'],
@@ -73,26 +74,28 @@ class RAGService:
                 rag_result.get('closest_white'),
                 rag_result.get('closest_black')
             )
-
+        else:
+            logger.info(f"rag res:{rag_result['is_ad']},{rag_result['score']}")
         # 5. ML-проверка (только для новых)
         if self.use_ml:
             result = self.ml_classifier.predict(text)
-            if result.is_spam:
+            logger.info(f"ml res:{result.is_spam},{result.confidence}")
+            if result and result.is_spam == True:
                 logger.info(f"🤖 ML обнаружил рекламу: {text[:50]}... (Уверенность: {result.confidence:.2f})")
                 return (
                     True,
                     result.confidence,
                     "ml_classifier",
-                    rag_result.get('closest_white'),
-                    rag_result.get('closest_black')
+                    None,
+                    None
                 )
 
         return (
             False,
-            rag_result['score'],
-            f"rag_{rag_result['method']}",
-            rag_result.get('closest_white'),
-            rag_result.get('closest_black')
+            0.0,
+            f"all_no_ads",
+            None,
+            None
         )
     
     def add_white_example(self, text: str) -> str:

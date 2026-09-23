@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 
 logger = logging.getLogger(__name__)
 
+
 class PredictionResult:
     def __init__(self, is_spam, confidence, spam_score, safe_score, model_name, threshold):
         self.is_spam = is_spam
@@ -15,6 +16,7 @@ class PredictionResult:
         self.safe_score = safe_score
         self.model_name = model_name
         self.threshold = threshold
+
 
 class SpamShieldClassifier:
     """
@@ -43,17 +45,29 @@ class SpamShieldClassifier:
     def _get_cache_key(self, text: str) -> str:
         return hashlib.sha256(text.encode('utf-8')).hexdigest()
 
-    def predict(self, text: str) -> PredictionResult:
+    def _apply_threshold(self, result: PredictionResult) -> Optional[PredictionResult]:
+        """
+        Единая точка применения порога.
+        Возвращает результат, если confidence > threshold, иначе None.
+        """
+        
+        return result if result.confidence > self.threshold else None
+
+    def predict(self, text: str) -> Optional[PredictionResult]:
         """Синхронное предсказание"""
         text = text.strip()
+        
         if not text or len(text) < 3:
-            return PredictionResult(False, 0.0, 0.0, 0.0, "SpamShield", self.threshold)
+            return None
 
-        # Кэш
+        # Кэш: хранит СЫРЫЕ скоры (PredictionResult), порог применяется всегда заново
+        key = None
         if self._cache is not None:
             key = self._get_cache_key(text)
-            if key in self._cache:
-                return self._cache[key]
+            cached = self._cache.get(key)
+            if cached is not None:
+                # ВАЖНО: применяем текущий порог к закэшированному результату
+                return cached
 
         try:
             # Подготовка входных данных: модель ожидает массив строк (batch, 1)
@@ -82,22 +96,26 @@ class SpamShieldClassifier:
                 threshold=self.threshold
             )
 
-            # Сохраняем в кэш
-            if self._cache is not None:
+            # Сохраняем в кэш СЫРОЙ результат (без применения порога)
+            if self._cache is not None and key is not None:
                 if len(self._cache) >= self.cache_size:
                     self._cache.pop(next(iter(self._cache)))
                 self._cache[key] = result
 
+            # Порог применяется здесь и только здесь (для свежих результатов)
+            
             return result
 
         except Exception as e:
             logger.error(f"❌ Ошибка инференса: {e}")
-            return PredictionResult(False, 0.0, 0.0, 0.0, "SpamShield", self.threshold)
+            return None
 
     def set_threshold(self, threshold: float):
         if 0 <= threshold <= 1:
             self.threshold = threshold
-            logger.info(f"📊 Порог изменён: {threshold}")
+            # Сбрасываем кэш, чтобы кэшированные PredictionResult.threshold не сбивали с толку
+            self.clear_cache()
+            logger.info(f"📊 Порог изменён: {threshold}, кэш сброшен")
 
     def clear_cache(self):
         if self._cache is not None:

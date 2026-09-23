@@ -63,7 +63,8 @@ async def forward_filtered_message(message: types.Message):
             )
             
             logger.info(f"📤 Переслано сообщение с кнопками: {text[:50]}...")
-        
+    except KeyError as e:
+        await message.answer("❌На этот чат не назначен ни один админ.")
     except Exception as e:
         logger.error(f"❌ Ошибка пересылки: {e}")
 
@@ -82,7 +83,7 @@ async def handle_action(callback: types.CallbackQuery):
     text = pending_messages.pop(msg_id)
     
     # Инициализируем RAG сервис
-    rag_service = rag_service
+    rag_service = ragservice
     
     if action == 'skip':
         await callback.message.delete()

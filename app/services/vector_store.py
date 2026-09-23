@@ -9,7 +9,7 @@ import logging
 logger = logging.getLogger(__name__)
 class VectorStore:
     def __init__(self):
-        self.persist_directory = "./chroma_db"
+        self.persist_directory = "./workers/ads_worker/app/chroma_db"
         os.makedirs(self.persist_directory, exist_ok=True)
         
         self.client = chromadb.PersistentClient(
@@ -175,8 +175,8 @@ class VectorStore:
             include=["documents", "distances", "metadatas"]
         )
     
-    def classify_text_advanced(self, text: str, top_k: int = 5) -> Dict:
-        """Классификация текста через RAG"""
+    def classify_text_advanced(self, text: str, top_k: int = 5, top_n: int = 3) -> Dict:
+        """Классификация текста через RAG с top-N усреднением"""
         # 1. Получаем похожие из обеих коллекций
         white_results = self.get_similar(text, self.white_collection, top_k)
         black_results = self.get_similar(text, self.black_collection, top_k)
@@ -189,37 +189,73 @@ class VectorStore:
         black_dists = black_results['distances'][0] if black_results['distances'] else []
         black_metas = black_results['metadatas'][0] if black_results['metadatas'] else []
         
-        # 2. Вычисляем сходство
-        safe_scores = [1 - dist for dist in white_dists] if white_dists else [0.0]
-        spam_scores = [1 - dist for dist in black_dists] if black_dists else [0.0]
+        # 2. Вычисляем сходство (косинус: 1 - distance)
+        safe_scores = [1 - dist for dist in white_dists] if white_dists else []
+        spam_scores = [1 - dist for dist in black_dists] if black_dists else []
         
+        # 3. Top-N усреднение вместо max
+        #    Берём N самых высоких скоров и усредняем — это гасит одиночные выбросы
+        def top_n_avg(scores: List[float], n: int) -> float:
+            if not scores:
+                return 0.0
+            top = sorted(scores, reverse=True)[:n]
+            return sum(top) / len(top)
+        
+        avg_safe = top_n_avg(safe_scores, top_n)
+        avg_spam = top_n_avg(spam_scores, top_n)
+        
+        # Для отладки/вывода оставляем и max — но решение принимаем по avg
         max_safe = max(safe_scores) if safe_scores else 0.0
         max_spam = max(spam_scores) if spam_scores else 0.0
         
-        # 3. Проверяем наличие рекламных примеров с высоким сходством
-        SPAM_THRESHOLD = 0.4
+        # 4. Пороги
+        SPAM_THRESHOLD = 0.5   
         SAFE_THRESHOLD = 0.6
+        MARGIN = 0.0        
         
-        high_spam_exists = any(score > SPAM_THRESHOLD for score in spam_scores)
-        high_safe_exists = any(score > SAFE_THRESHOLD for score in safe_scores)
+        high_spam_exists = avg_spam > SPAM_THRESHOLD
+        high_safe_exists = avg_safe > SAFE_THRESHOLD
         
-        # 4. Логика принятия решений
+        # 5. Логика принятия решений (по усреднённым скорам)
         if high_spam_exists:
-            if max_safe > max_spam and max_safe > SAFE_THRESHOLD:
+            # Спам уверенно ближе safe И с заметным отрывом → реклама
+            if avg_safe > avg_spam and avg_safe > SAFE_THRESHOLD:
                 return {
                     "is_ad": False,
-                    "score": max_safe,
+                    "score": avg_safe,
                     "method": "safe_dominates",
-                    "delta": max_safe - max_spam,
+                    "delta": avg_safe - avg_spam,
+                    "avg_safe": avg_safe,
+                    "avg_spam": avg_spam,
+                    "max_safe": max_safe,
+                    "max_spam": max_spam,
+                    "closest_white": white_docs[0] if white_docs else None,
+                    "closest_black": black_docs[0] if black_docs else None
+                }
+            elif (avg_spam - avg_safe) < MARGIN:
+                # Спам выше порога, но отрыв от safe маленький → не уверены, считаем safe
+                return {
+                    "is_ad": False,
+                    "score": avg_spam,
+                    "method": "ambiguous_lean_safe",
+                    "delta": avg_spam - avg_safe,
+                    "avg_safe": avg_safe,
+                    "avg_spam": avg_spam,
+                    "max_safe": max_safe,
+                    "max_spam": max_spam,
                     "closest_white": white_docs[0] if white_docs else None,
                     "closest_black": black_docs[0] if black_docs else None
                 }
             else:
                 return {
                     "is_ad": True,
-                    "score": max_spam,
+                    "score": avg_spam,
                     "method": "spam_detected",
-                    "delta": max_spam - max_safe if max_spam > max_safe else 0,
+                    "delta": avg_spam - avg_safe,
+                    "avg_safe": avg_safe,
+                    "avg_spam": avg_spam,
+                    "max_safe": max_safe,
+                    "max_spam": max_spam,
                     "closest_white": white_docs[0] if white_docs else None,
                     "closest_black": black_docs[0] if black_docs else None
                 }
@@ -227,9 +263,13 @@ class VectorStore:
             if high_safe_exists:
                 return {
                     "is_ad": False,
-                    "score": max_safe,
+                    "score": avg_safe,
                     "method": "safe_detected",
                     "delta": 0,
+                    "avg_safe": avg_safe,
+                    "avg_spam": avg_spam,
+                    "max_safe": max_safe,
+                    "max_spam": max_spam,
                     "closest_white": white_docs[0] if white_docs else None,
                     "closest_black": None
                 }
@@ -239,6 +279,10 @@ class VectorStore:
                     "score": 0.0,
                     "method": "no_match",
                     "delta": 0,
+                    "avg_safe": avg_safe,
+                    "avg_spam": avg_spam,
+                    "max_safe": max_safe,
+                    "max_spam": max_spam,
                     "closest_white": None,
                     "closest_black": None
                 }

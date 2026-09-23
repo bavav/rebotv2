@@ -11,7 +11,7 @@ from shared.app.rabbitmq import RabbitMQConsumer
 configure_logging(settings.log_level)
 logger = get_logger(__name__)
 
-REPLY_TEXT = "Привет, я заглушка"
+
 bot = Bot(token=settings.telegram_bot_token)
 
 
@@ -65,7 +65,7 @@ async def main():
     consumer = RabbitMQConsumer(
         url=settings.rabbitmq_url,
         exchange_name=settings.rabbitmq_exchange,
-        queue_name="reply_worker_queue",   # например, для ads_worker будет "ads_worker_queue"
+        queue_name="ads_worker_queue", 
     )
     await consumer.connect()
     await consumer.consume(process_message)
