@@ -1,18 +1,20 @@
 # message.py - альтернативный вариант с кнопками на пересланном сообщении
+from datetime import datetime
 from aiogram import Router, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from ...app.config import config
-from ...app.filters.rag_filter import RagFilter
-from ...app.services.rag_service import ragservice
+from ..filters.main_filter import MainFilter
+from aiogram.enums import ParseMode
 import logging
-from ...storage import add_globan_data,generate_key
+from ...storage import add_globan_data
 logger = logging.getLogger(__name__)
 router = Router()
-
+from ..services.ml_errors import CheckedText, get_sesion
+from sqlalchemy import select
 # Словарь для хранения текстов сообщений
 pending_messages = {}
 from ads_worker.app.admin_module.handlers.comands import rout,F
-@rout.event("message",RagFilter())
+@rout.event("message",MainFilter())
 async def forward_filtered_message(message: types.Message):
     """Пересылает сообщение с кнопками для добавления в белый/черный список"""
     logger.debug("f: "+str(config.ADMIN_IDS.keys())+" "+str(message.chat.id))
@@ -20,33 +22,25 @@ async def forward_filtered_message(message: types.Message):
         # Получаем текст сообщения
         text = message.text or message.caption or ""
         
-        # Сохраняем текст для последующего использования
-        pending_messages[message.message_id] = text
         
-        # Пересылаем целевому пользователю
         
-
-        key = add_globan_data(message.from_user.id, message.message_id, message.chat.id)
+       
+        with get_sesion() as session:
+            statement = select(CheckedText).where(CheckedText.text == text)
+            msg = session.scalars(statement).first()
+        
+        key = msg.id
         
         for user in config.ADMIN_IDS[message.chat.id]:
             forwarded = await message.forward(chat_id=user)
             
             # Создаем кнопки для действий
             keyboard = InlineKeyboardMarkup(inline_keyboard=[
-                [
-                    InlineKeyboardButton(
-                        text="✅ В белый", 
-                        callback_data=f"action_white_{message.message_id}"
-                    ),
-                    InlineKeyboardButton(
-                        text="❌ В черный", 
-                        callback_data=f"action_black_{message.message_id}"
-                    )
-                ],
+                
                 [
                     InlineKeyboardButton(
                         text="⏭ Пропустить", 
-                        callback_data=f"action_skip_{message.message_id}"
+                        callback_data=f"action_skip_{msg.id}"
                     ),
                     InlineKeyboardButton(
                         text="🚫 Глобан", 
@@ -64,58 +58,41 @@ async def forward_filtered_message(message: types.Message):
             
             logger.info(f"📤 Переслано сообщение с кнопками: {text[:50]}...")
     except KeyError as e:
-        await message.answer("❌На этот чат не назначен ни один админ.")
+        await message.bot.send_message(message.from_user.id,"❌На чат "+f"<a href='https://t.me/{message.chat.username}'>{message.chat.full_name}</a>"+ " не назначен ни один админ.")
     except Exception as e:
         logger.error(f"❌ Ошибка пересылки: {e}")
 
 @router.callback_query(lambda c: c.data.startswith('action_'))
 async def handle_action(callback: types.CallbackQuery):
     """Обработка нажатий кнопок"""
-    _, action, msg_id_str = callback.data.split('_')
-    msg_id = int(msg_id_str)
-    
-    # Получаем сохраненный текст
-    if msg_id not in pending_messages:
-        await callback.answer("❌ Сообщение уже обработано", show_alert=True)
-        await callback.message.delete()
-        return
-    
-    text = pending_messages.pop(msg_id)
-    
-    # Инициализируем RAG сервис
-    rag_service = ragservice
-    
-    if action == 'skip':
-        await callback.message.delete()
-        await callback.answer("Пропущено ✅")
-        return
-    
-    elif action == 'white':
-        # Добавляем в белый список
-        doc_id = rag_service.add_white_example(text)
-        stats = rag_service.get_statistics()
+    with get_sesion() as session:
+        _, action, msg_id_str = callback.data.split('_')
+        msg_id = int(msg_id_str)
+
+        statement = select(CheckedText).where(CheckedText.id == msg_id)
+        msg = session.scalars(statement).first()
         
-        await callback.message.edit_text(
-            f"✅ Добавлено в БЕЛЫЙ список!\n"
-            
-            f"📝 ID: {doc_id[:8]}...\n" if callback.from_user.id == config.DEV_ID else ""
-            f"📊 Всего примеров: {stats}" if callback.from_user.id == config.DEV_ID else ""
-        )
-        await callback.answer("Добавлено в белый список ✅")
-        logger.info(f"➕ Добавлено в белый список: {text[:50]}...")
+        # Получаем сохраненный текст
+        if msg.message_id not in pending_messages:
+            await callback.answer("❌ Сообщение уже обработано", show_alert=True)
+            await callback.message.delete()
+            return
+
+
+
+
+
+        if action == 'skip':
+            msg.approwed_is_spam = False
+            msg.ts_of_approve = datetime.now()
+            msg.is_checked = True
+            session.commit()
+            await callback.message.delete()
+            await callback.answer("Пропущено ✅")
+            return
+    
+    
         
-    elif action == 'black':
-        # Добавляем в черный список
-        doc_id = rag_service.add_black_example(text)
-        stats = rag_service.get_statistics()
-        
-        await callback.message.edit_text(
-            f"❌ Добавлено в ЧЕРНЫЙ список!\n"
-            f"📝 ID: {doc_id[:8]}...\n" if callback.from_user.id == config.DEV_ID else ""
-            f"📊 Всего примеров: {stats}" if callback.from_user.id == config.DEV_ID else ""
-        )
-        await callback.answer("Добавлено в черный список ❌")
-        logger.info(f"➕ Добавлено в черный список: {text[:50]}...")
         
 def stable():
     return "ok"

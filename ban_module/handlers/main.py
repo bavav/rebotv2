@@ -16,6 +16,8 @@ from aiogram.enums import ParseMode
 from ...storage import add_globan_data, endget_globan_data, get_globan_data
 from aiogram.types import ChatPermissions, ChatMember
 from ads_worker.app.admin_module.handlers.comands import rout, F
+from ...app.services.ml_errors import CheckedText, get_sesion
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 router = Router()
@@ -116,7 +118,7 @@ async def captcha_callback(callback: CallbackQuery):
         await callback.answer("Это не ваша каптча!", show_alert=True)
         return
 
-    # ⬇️ было: old_perms = rights_cache.pop((chat_id, user_id), None)
+    
     old_perms = await pop_rights(chat_id, user_id)
 
     if old_perms is None:
@@ -134,65 +136,78 @@ async def captcha_callback(callback: CallbackQuery):
 
 @rout.event("callback_query", F.data.startswith('confirm_globan_'))
 async def handle_0(callback: types.CallbackQuery):
-    parts = callback.data.split('_')
-    if len(parts) < 2:
-        return
-    key = parts[2]
-    data = get_globan_data(key)
-    if not data:
-        await callback.answer("❌ Данные устарели или не найдены", show_alert=True)
-        return
-    user_id, msg_id, chat_id = data
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(
-            text="✅ Подтвердить",
-            callback_data=f"globan_{key}",
+    with get_sesion() as session:
+        parts = callback.data.split('_')
+        if len(parts) < 2:
+            return
+        key = parts[2]
+        
+        
+        statement = select(CheckedText).where(CheckedText.id == key)
+        msg = session.scalars(statement).first()
+        msg.approwed_is_spam = True
+        msg.is_checked = True
+        session.commit()
+        if not msg:
+            await callback.answer("❌ Данные устарели или не найдены", show_alert=True)
+            return
+        user_id, msg_id, chat_id = msg.from_user_id,msg.message_id,msg.chat_id
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[[
+            InlineKeyboardButton(
+                text="✅ Подтвердить",
+                callback_data=f"globan_{key}",
+            )
+        ]])
+        await callback.message.answer(
+            f"Вы точно хотите выдать глобан пользователю {user_id}?",
+            reply_markup=keyboard,
         )
-    ]])
-    await callback.message.answer(
-        f"Вы точно хотите выдать глобан пользователю {user_id}?",
-        reply_markup=keyboard,
-    )
-    await callback.answer()
+        await callback.answer()
 
 
 @rout.event("callback_query", F.data.startswith('globan_'))
 async def handle_1(callback: types.CallbackQuery):
     from ...main import bot
-    parts = callback.data.split('_')
-    if len(parts) < 2:
-        await callback.answer("Ошибка данных")
-        return
-    key = parts[1]
-    data = endget_globan_data(key)
-    if not data:
-        await callback.answer("❌ Данные устарели", show_alert=True)
-        return
-    user_id, msg_id, chat_id = data
+    with get_sesion() as session:
+        parts = callback.data.split('_')
+        if len(parts) < 2:
+            await callback.answer("Ошибка данных")
+            return
+        key = parts[1]
+        
+            
+        statement = select(CheckedText).where(CheckedText.id == key)
+        msg = session.scalars(statement).first()
+        msg.approwed_is_spam = True
+        msg.is_checked = True
+        session.commit()
+        if not msg:
+            await callback.answer("❌ Данные не найдены", show_alert=True)
+            return
+        user_id, msg_id, chat_id = msg.from_user_id,msg.message_id,msg.chat_id
 
-    try:
-        await bot.delete_message(chat_id=chat_id, message_id=msg_id)
-    except Exception as e:
-        logger.error(f"Не удалось удалить пересланное сообщение: {e}")
-
-    try:
-        await callback.message.delete()
-    except Exception as e:
-        logger.error(f"Не удалось удалить сообщение подтверждения: {e}")
-
-    for chat_id in config.CHATS_IDS:
         try:
-            await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
-        except TelegramBadRequest:
-            continue
+            await bot.delete_message(chat_id=chat_id, message_id=msg_id)
+        except Exception as e:
+            logger.error(f"Не удалось удалить пересланное сообщение: {e}")
 
-    await callback.answer("✅ Пользователь забанен, сообщение удалено")
+        try:
+            await callback.message.delete()
+        except Exception as e:
+            logger.error(f"Не удалось удалить сообщение подтверждения: {e}")
+
+        for chat_id in config.CHATS_IDS:
+            try:
+                await bot.ban_chat_member(chat_id=chat_id, user_id=user_id)
+            except TelegramBadRequest:
+                continue
+
+        await callback.answer("✅ Пользователь забанен, сообщение удалено")
 
 @rout.event("message", F.text.lower() =='глобан')
 async def globan(msg: types.Message):
     from ...main import bot
-    from ...app.services.rag_service import ragservice
-    rag_service = ragservice
+    
     if not msg.reply_to_message:
         await msg.answer("❌Необходимо ответить на сообщение.",receiver_user_id=msg.from_user.id)
         await msg.delete()
@@ -216,8 +231,10 @@ async def globan(msg: types.Message):
         except TelegramBadRequest:
             continue
     if msg.reply_to_message.text:
-        doc_id = rag_service.add_black_example(msg.reply_to_message.text)
-        logger.info(f"Добавлен черный пример. {msg.reply_to_message.text}")
+        with get_sesion() as session:
+            new_text = CheckedText(text=msg.text,from_user_id=msg.from_user.id,message_id=msg.message_id,chat_id = msg.chat.id,is_spam = True,reason="admin_manual_globan",confidence=1.0)
+            session.add(new_text)
+            session.commit()  
     
     await msg.answer("✅ Пользователь забанен, сообщение удалено",receiver_user_id=msg.from_user.id)
 def stable():

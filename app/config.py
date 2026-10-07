@@ -39,9 +39,8 @@ class Config:
         return admins
     # Настройки ML
     ML_THRESHOLD = float(os.getenv("ML_THRESHOLD", 0.5))
+    DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/telegram_bots"
     USE_ML = True
-    use_onnx = True
-    SPAMSHIELD_MODEL_PATH = "./workers/ads_worker/app/shieldmodel"
     def save_bw(self):
         with open("./workers/ads_worker/app/bad_words.pkl","wb") as f:
             pickle.dump(self.BAD_WORDS,f)

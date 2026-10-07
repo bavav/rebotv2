@@ -1,1 +1,1 @@
-from .rag_filter import RagFilter
+from .main_filter import MainFilter
