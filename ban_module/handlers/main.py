@@ -145,9 +145,8 @@ async def handle_0(callback: types.CallbackQuery):
         
         statement = select(CheckedText).where(CheckedText.id == key)
         msg = session.scalars(statement).first()
-        msg.approwed_is_spam = True
-        msg.is_checked = True
-        session.commit()
+        
+        
         if not msg:
             await callback.answer("❌ Данные устарели или не найдены", show_alert=True)
             return

@@ -1,23 +1,19 @@
-# moderation/svm_embedding_model.py
-"""
-SVMEmbeddingSpamClassifier — SVM поверх эмбеддингов.
-
-Использует мультиязычную/русскую модель эмбеддингов,
-усредняет токены в один вектор, обучает SVM с RBF-ядром.
-
-Интерфейс совместим с OwnSpamClassifier.
-"""
+# moderation/svm_model.py
 from __future__ import annotations
 
 import logging
 import pickle
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, List, Optional, Sequence
+from typing import Any, Dict, Optional, Sequence
 
 import numpy as np
 from sklearn.calibration import CalibratedClassifierCV
+from sklearn.preprocessing import StandardScaler
 from sklearn.svm import SVC
+
+from .normalize import normalize
+from .own_model import manual_features
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +32,7 @@ class SVMEmbeddingSpamClassifier:
 
     def __init__(
         self,
-        model_dir: str = "./shieldmodel/svm_emb",
+        model_dir: str = "./shieldmodel/svm",
         threshold: float = 0.5,
         embedding_model: str = "cointegrated/rubert-tiny2",
     ):
@@ -46,6 +42,7 @@ class SVMEmbeddingSpamClassifier:
         self.embedding_model_name = embedding_model
 
         self.embedder = None
+        self.scaler: Optional[StandardScaler] = None
         self.clf: Optional[CalibratedClassifierCV] = None
         self.n_pos: int = 0
         self.n_total: int = 0
@@ -53,73 +50,76 @@ class SVMEmbeddingSpamClassifier:
     def _load_embedder(self):
         if self.embedder is not None:
             return
-        try:
-            from sentence_transformers import SentenceTransformer
-            self.embedder = SentenceTransformer(self.embedding_model_name)
-            logger.info("Эмбеддер загружен: %s", self.embedding_model_name)
-        except ImportError:
-            logger.error(
-                "sentence-transformers не установлен. "
-                
-            )
-            raise
+        from sentence_transformers import SentenceTransformer
+        self.embedder = SentenceTransformer(self.embedding_model_name)
+        logger.info("Эмбеддер загружен: %s", self.embedding_model_name)
 
     def _embed(self, texts: Sequence[str]) -> np.ndarray:
         self._load_embedder()
-        # encode с нормализацией — косинус будет через скалярное произведение
+        norm_texts = [normalize(t) for t in texts]
         embs = self.embedder.encode(
-            list(texts),
+            norm_texts,
             normalize_embeddings=True,
             show_progress_bar=False,
         )
         return np.asarray(embs, dtype=np.float32)
 
-    def train(
-        self,
-        texts: Sequence[str],
-        labels: Sequence[int],
-    ) -> Dict[str, object]:
+    def _features(self, texts: Sequence[str], fit: bool = False) -> np.ndarray:
+        embs = self._embed(texts)
+        meta = np.array([manual_features(t) for t in texts], dtype=np.float32)
+        if fit:
+            # scale только meta, эмбеддинги уже нормализованы
+            self.scaler = StandardScaler()
+            meta = self.scaler.fit_transform(meta)
+        else:
+            meta = self.scaler.transform(meta)
+        return np.hstack([embs, meta]).astype(np.float32)
+
+    def train(self, texts, labels) -> Dict[str, Any]:
         texts = list(texts)
         labels = list(labels)
         n_pos = int(sum(labels))
         n_total = len(labels)
 
         if n_total < self.MIN_TOTAL or n_pos < self.MIN_POSITIVES:
-            logger.warning(
-                "Мало данных для SVM: total=%d, pos=%d — пропуск.",
-                n_total, n_pos,
-            )
+            logger.warning("Мало данных SVM: total=%d, pos=%d", n_total, n_pos)
             return {"trained": False, "n_total": n_total, "n_pos": n_pos}
 
-        X = self._embed(texts)
+        X = self._features(texts, fit=True)
         y = np.array(labels)
 
-        # SVC с RBF — стандарт для текстов на эмбеддингах.
-        # probability=True нужен для predict_proba.
-        base_svc = SVC(
+        base = SVC(
             kernel="rbf",
             C=1.0,
             gamma="scale",
             class_weight="balanced",
             random_state=42,
         )
-        self.clf = CalibratedClassifierCV(
-            base_svc,
-            method="sigmoid",   # аналог Platt scaling
-            cv=3,               # 3-fold хватает, не 5 — быстрее
-        )
+        n_splits = 3 if n_pos < 15 else 5
+        self.clf = CalibratedClassifierCV(base, method="sigmoid", cv=n_splits)
         self.clf.fit(X, y)
 
         self.n_pos = n_pos
         self.n_total = n_total
-        logger.info("SVM обучен: total=%d, pos=%d", n_total, n_pos)
+        logger.info("SVM обучен: total=%d, pos=%d, dim=%d", n_total, n_pos, X.shape[1])
         return {"trained": True, "n_total": n_total, "n_pos": n_pos}
 
     def predict(self, text: str) -> Prediction:
-        if self.clf is None:
+        if self.clf is None or self.scaler is None:
             return Prediction(False, 0.0, 0.0, "svm_untrained")
+        try:
+            X = self._features([text])
+        except Exception as e:
+            logger.error("svm error: %s", e)
+            return Prediction(False, 0.0, 0.0, "svm_error")
 
-        X = self._embed([text])
+        if X.shape[1] != self.clf.n_features_in_:
+            logger.error(
+                "svm dim mismatch: got %d, expected %d",
+                X.shape[1], self.clf.n_features_in_,
+            )
+            return Prediction(False, 0.0, 0.0, "svm_dim_mismatch")
+
         proba = float(self.clf.predict_proba(X)[0, 1])
         is_spam = proba >= self.threshold
         return Prediction(
@@ -136,12 +136,13 @@ class SVMEmbeddingSpamClassifier:
         with path.open("wb") as f:
             pickle.dump({
                 "clf": self.clf,
+                "scaler": self.scaler,
                 "threshold": self.threshold,
                 "embedding_model_name": self.embedding_model_name,
                 "n_pos": self.n_pos,
                 "n_total": self.n_total,
             }, f)
-        logger.info("SVM сохранён: %s", path)
+        logger.info("svm сохранён: %s", path)
 
     def load(self) -> bool:
         path = self.model_dir / "model.pkl"
@@ -150,8 +151,11 @@ class SVMEmbeddingSpamClassifier:
         with path.open("rb") as f:
             data = pickle.load(f)
         self.clf = data["clf"]
+        self.scaler = data.get("scaler")   # None для старых моделей
         self.threshold = data["threshold"]
-        self.embedding_model_name = data.get("embedding_model_name", self.embedding_model_name)
+        self.embedding_model_name = data.get(
+            "embedding_model_name", self.embedding_model_name,
+        )
         self.n_pos = data.get("n_pos", 0)
         self.n_total = data.get("n_total", 0)
         return True
